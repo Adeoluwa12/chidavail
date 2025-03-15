@@ -2,11 +2,10 @@
   "name": "cd-bot",
   "version": "1.0.0",
   "main": "index.js",
-  "scripts": {
-    "build": "tsc",
-    "start": "node dist/app.js",
-    "dev": "ts-node src/app.ts",
-    "seed": "ts-node src/scripts/seed-backup-codes.ts"
+"scripts": {
+  "build": "tsc",
+    "dev": "NODE_OPTIONS='--max-old-space-size=1024' ts-node src/app.ts",
+    "start": "node dist/app.js"
   },
   "keywords": [],
   "author": "",
