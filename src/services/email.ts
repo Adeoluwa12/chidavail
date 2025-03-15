@@ -45,11 +45,15 @@ export async function sendEmail(subject: string, text: string): Promise<void> {
 
     console.log(`Sending email "${subject}" to ${recipients.length} recipients`)
 
+    // Convert plain text to HTML by replacing newlines with <br> tags
+    const html = text.replace(/\n/g, "<br>").replace(/\n\n/g, "<p></p>")
+
     await transporter.sendMail({
       from: process.env.EMAIL_FROM || "adeoyeoluwaferanmi@gmail.com",
       to: recipients.join(","),
       subject,
-      text,
+      text, // Keep the plain text version
+      html, // Add HTML version
     })
 
     console.log("Email sent successfully")
