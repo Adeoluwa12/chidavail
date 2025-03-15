@@ -7,7 +7,7 @@
     "start": "npx puppeteer browsers install chrome && node dist/app.js",
     "dev": "NODE_OPTIONS='--max-old-space-size=1024' ts-node src/app.ts"
   },
-  
+
   "keywords": [],
   "author": "",
   "license": "ISC",
