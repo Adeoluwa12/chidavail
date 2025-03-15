@@ -4,6 +4,7 @@
   "main": "index.js",
   "scripts": {
     "build": "tsc",
+    "postbuild": "copyfiles -u 1 \"src/public/**/*\" dist",
     "start": "npx puppeteer browsers install chrome && node dist/app.js",
     "dev": "NODE_OPTIONS='--max-old-space-size=1024' ts-node src/app.ts"
   },
@@ -36,6 +37,7 @@
     "@types/nodemon": "^1.19.6",
     "@types/puppeteer": "^7.0.4",
     "@types/twilio": "^3.19.2",
+    "copyfiles": "^2.4.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.2"
   }
