@@ -94,16 +94,19 @@ export async function closeBrowser(): Promise<void> {
 export async function setupBot(): Promise<void> {
   try {
     browser = await puppeteer.launch({
-      headless: false,
+      headless: true,
       // headless: "new" as any,
       args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-accelerated-2d-canvas",
-        "--disable-gpu",
-        "--window-size=1280,800",
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--single-process',
+        '--disable-gpu'
       ],
+      
       defaultViewport: { width: 1280, height: 800 },
       timeout: 30000,
     })
