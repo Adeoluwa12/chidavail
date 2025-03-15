@@ -1,0 +1,42 @@
+# Node.js dependencies
+node_modules/
+npm-debug.log*
+pnpm-debug.log*
+package-lock.json
+
+# Environment variables
+.env
+
+
+# TypeScript build outputs
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+lerna-debug.log*
+debug.log*
+
+# Cache files
+.cache/
+.eslintcache
+.npm/
+.pnp/
+
+# IDE/editor files
+.vscode/
+.idea/
+*.iml
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Misc
+coverage/
+*.swp
+*.swo
