@@ -1509,7 +1509,7 @@ export async function closeBrowser(): Promise<void> {
 export async function setupBot(): Promise<void> {
   try {
     browser = await puppeteer.launch({
-      headless: false,
+      headless: true,
       // headless: "new" as any,
       args: [
         "--no-sandbox",

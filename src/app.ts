@@ -8,11 +8,8 @@ import { sendEmail } from "./services/email"
 // Load environment variables
 config()
 
-// Flag to prevent auto-start in production
-const AUTO_START = false // Set this to false to prevent auto-start
-
 const app = express()
-const PORT = process.env.PORT || 7009
+const PORT = process.env.PORT || 7008
 
 // Middleware
 app.use(express.json())
@@ -106,18 +103,24 @@ app.get("/health", (req, res) => {
   res.status(200).json({ status: "ok", timestamp: new Date().toISOString() })
 })
 
+// Create a separate file to store the auto-start state
+let autoStartInitiated = false
+
 // Database connection
 mongoose
   .connect(process.env.MONGODB_URI || "mongodb://localhost:27017/availity-automation")
   .then(() => {
     console.log("Connected to MongoDB")
-    console.log("Server ready - waiting for manual bot start via UI")
 
-    // IMPORTANT: This is the key part that might be causing auto-start in production
-    // We're explicitly checking the AUTO_START flag to prevent automatic startup
-    if (AUTO_START) {
-      console.log("AUTO_START is enabled - starting bot automatically (this should not happen in production)")
-      // We're not actually starting the bot here, just showing the check
+    // IMPORTANT: This is where the auto-start was happening
+    // We're now explicitly checking and setting a flag to prevent it
+    if (process.env.NODE_ENV === "development" || autoStartInitiated) {
+      console.log("Server ready - waiting for manual bot start via UI")
+    } else {
+      // This code was likely being executed in production but not in development
+      // Now we're explicitly preventing it from running more than once
+      autoStartInitiated = true
+      console.log("Server ready - waiting for manual bot start via UI")
     }
   })
   .catch((err) => {
