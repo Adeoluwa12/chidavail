@@ -34,6 +34,11 @@ async function verifyTransporter(attempts = 3, delayMs = 5000) {
 // Initialize verification
 verifyTransporter()
 
+/**
+ * Send an email notification
+ * @param subject - Email subject
+ * @param text - Email body text
+ */
 export async function sendEmail(subject: string, text: string): Promise<void> {
   try {
     const recipients = process.env.EMAIL_RECIPIENTS?.split(",").map((r) => r.trim()) || []
@@ -46,7 +51,7 @@ export async function sendEmail(subject: string, text: string): Promise<void> {
     console.log(`Sending email "${subject}" to ${recipients.length} recipients`)
 
     // Convert plain text to HTML by replacing newlines with <br> tags
-    const html = text.replace(/\n/g, "<br>").replace(/\n\n/g, "<p></p>")
+    const html = text.replace(/\n/g, "<br>")
 
     await transporter.sendMail({
       from: process.env.EMAIL_FROM || "adeoyeoluwaferanmi@gmail.com",

@@ -4,12 +4,16 @@
   "main": "index.js",
   
 "scripts": {
-  "build": "tsc",
-  "postbuild": "copyfiles -u 1 \"src/public/**/*\" dist",
-  "copy-public": "mkdir -p dist/public && cp -r src/public/* dist/public/",
-  "start": "npx puppeteer browsers install chrome && node dist/app.js",
-  "dev": "NODE_OPTIONS='--max-old-space-size=1024' ts-node src/app.ts"
-},
+    "build": "tsc",
+    "postbuild": "copyfiles -u 1 \"src/public/**/*\" dist",
+    "copy-public": "mkdir -p dist/public && cp -r src/public/* dist/public/",
+    "start": "npx puppeteer browsers install chrome && node dist/app.js",
+    "start-with-bot": "npx puppeteer browsers install chrome && node dist/app.js --auto-start",
+    "dev": "npx puppeteer browsers install chrome && ts-node src/app.ts",
+    "clean": "rm -rf dist",
+    "rebuild": "npm run clean && npm run build && npm run copy-public"
+  },
+
   "keywords": [],
   "author": "",
   "license": "ISC",

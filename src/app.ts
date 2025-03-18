@@ -8,6 +8,9 @@ import { sendEmail } from "./services/email"
 // Load environment variables
 config()
 
+// Flag to prevent auto-start in production
+const AUTO_START = false // Set this to false to prevent auto-start
+
 const app = express()
 const PORT = process.env.PORT || 7009
 
@@ -22,13 +25,78 @@ app.post("/start-bot", async (req, res) => {
     console.log("🚀 Starting bot from interface...")
     await setupBot() // Initialize the bot
     const loginSuccess = await loginToAvaility() // Attempt to log in
+
     if (loginSuccess) {
+      // Get current members from database for the startup notification
+      const Referral = mongoose.model("Referral")
+      const currentMembers = await Referral.find().sort({ createdAt: -1 }).limit(10)
+
+      // Start the monitoring process
+      startReferralMonitoring().catch((err) => {
+        console.error("Error in monitoring process:", err)
+      })
+
+      // Prepare email content
+      let emailContent =
+        `The Availity monitoring bot has been started successfully at ${new Date().toLocaleString()}.\n\n` +
+        `The bot will check for new referrals every 30 seconds and notify you of any changes.\n\n`
+
+      // Add current members to the email if there are any
+      if (currentMembers && currentMembers.length > 0) {
+        emailContent += `Current Members in Database:\n\n`
+
+        currentMembers.forEach((member, index) => {
+          emailContent += `Member ${index + 1}:\n`
+          emailContent += `Name: ${member.memberName}\n`
+          emailContent += `ID: ${member.memberID}\n`
+
+          if (member.serviceName) {
+            emailContent += `Service: ${member.serviceName}\n`
+          }
+
+          if (member.status) {
+            emailContent += `Status: ${member.status}\n`
+          }
+
+          if (member.county) {
+            emailContent += `County: ${member.county}\n`
+          }
+
+          if (member.requestOn) {
+            emailContent += `Request Date: ${member.requestOn}\n`
+          }
+
+          emailContent += `\n`
+        })
+      } else {
+        emailContent += `No members currently in the database. You will be notified when new referrals are detected.\n\n`
+      }
+
+      emailContent += `This is an automated message from the monitoring system.`
+
+      // Send startup notification with member information
+      await sendEmail("Availity Monitoring Bot Started", emailContent)
+
       res.status(200).json({ message: "Bot started and logged in successfully!" })
     } else {
       res.status(500).json({ message: "Bot failed to log in." })
     }
   } catch (error) {
     console.error("❌ Error starting bot:", error)
+
+    // Send error notification
+    try {
+      await sendEmail(
+        "⚠️ Availity Monitoring Bot Failed to Start",
+        `The Availity monitoring bot failed to start at ${new Date().toLocaleString()}.\n\n` +
+          `Error: ${error}\n\n` +
+          `Please check the logs and restart the application.\n\n` +
+          `This is an automated message from the monitoring system.`,
+      )
+    } catch (emailError) {
+      console.error("Failed to send error notification email:", emailError)
+    }
+
     res.status(500).json({ message: "Failed to start bot.", error: (error as any).message })
   }
 })
@@ -41,35 +109,16 @@ app.get("/health", (req, res) => {
 // Database connection
 mongoose
   .connect(process.env.MONGODB_URI || "mongodb://localhost:27017/availity-automation")
-  .then(async () => {
+  .then(() => {
     console.log("Connected to MongoDB")
+    console.log("Server ready - waiting for manual bot start via UI")
 
-    // Initialize the bot and start monitoring
-    console.log("Initializing bot and starting monitoring...")
-    try {
-      await startReferralMonitoring()
-
-      // Send startup notification
-      await sendEmail(
-        "Availity Monitoring Bot Started",
-        `The Availity monitoring bot has been started successfully at ${new Date().toLocaleString()}.\n\n` +
-          `The bot will check for new referrals every 30 seconds and notify you of any changes.\n\n` +
-          `This is an automated message from the monitoring system.`,
-      )
-    } catch (err) {
-      console.error("Failed to start monitoring:", err)
-
-      // Send error notification
-      await sendEmail(
-        "⚠️ Availity Monitoring Bot Failed to Start",
-        `The Availity monitoring bot failed to start at ${new Date().toLocaleString()}.\n\n` +
-          `Error: ${err}\n\n` +
-          `Please check the logs and restart the application.\n\n` +
-          `This is an automated message from the monitoring system.`,
-      )
+    // IMPORTANT: This is the key part that might be causing auto-start in production
+    // We're explicitly checking the AUTO_START flag to prevent automatic startup
+    if (AUTO_START) {
+      console.log("AUTO_START is enabled - starting bot automatically (this should not happen in production)")
+      // We're not actually starting the bot here, just showing the check
     }
-
-    console.log("Application initialization completed successfully")
   })
   .catch((err) => {
     console.error("MongoDB connection error:", err)

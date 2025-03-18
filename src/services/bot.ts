@@ -1426,7 +1426,7 @@ let isMonitoring = false
 let currentMembers: MemberData[] = []
 let lastHeartbeat = new Date()
 let heartbeatInterval: NodeJS.Timeout | null = null
-let restartAttempts = 0
+const restartAttempts = 0
 const MAX_RESTART_ATTEMPTS = 5
 
 // Constants
@@ -1509,7 +1509,7 @@ export async function closeBrowser(): Promise<void> {
 export async function setupBot(): Promise<void> {
   try {
     browser = await puppeteer.launch({
-      headless: true,
+      headless: false,
       // headless: "new" as any,
       args: [
         "--no-sandbox",
@@ -2556,68 +2556,32 @@ async function startContinuousMonitoring(frame: any): Promise<void> {
 
   // Set up heartbeat monitoring to detect if the bot stops working
   if (!heartbeatInterval) {
+    let notificationSent = false
+
     heartbeatInterval = setInterval(async () => {
       const now = new Date()
       const timeSinceLastHeartbeat = now.getTime() - lastHeartbeat.getTime()
 
-      if (timeSinceLastHeartbeat > HEARTBEAT_TIMEOUT_MS) {
+      if (timeSinceLastHeartbeat > HEARTBEAT_TIMEOUT_MS && !notificationSent) {
         console.error(`⚠️ Bot appears to be inactive for ${timeSinceLastHeartbeat / 1000} seconds!`)
 
-        // Send notification that the bot is down
+        // Send notification that the bot is down - ONLY ONCE
         await sendEmail(
           "⚠️ ALERT: Availity Monitoring Bot is Down",
           `The Availity monitoring bot has not reported activity for ${Math.floor(timeSinceLastHeartbeat / 1000)} seconds.\n\n` +
             `Last activity was at ${lastHeartbeat.toLocaleString()}.\n\n` +
-            `Please restart the application to resume monitoring.\n\n` +
+            `MANUAL INTERVENTION REQUIRED: Please restart the application to resume monitoring.\n\n` +
             `This is an automated message from the monitoring system.`,
         )
 
-        // Try to restart the monitoring if possible
-        if (restartAttempts < MAX_RESTART_ATTEMPTS) {
-          restartAttempts++
-          console.log(`Attempting to restart monitoring (attempt ${restartAttempts} of ${MAX_RESTART_ATTEMPTS})...`)
+        // Mark notification as sent so we don't send it again
+        notificationSent = true
 
-          try {
-            // Close existing browser if any
-            await closeBrowser()
-
-            // Clear intervals
-            if (monitoringInterval) {
-              clearInterval(monitoringInterval)
-              monitoringInterval = null
-            }
-
-            // Reset monitoring state
-            isMonitoring = false
-
-            // Try to restart the process
-            await checkForNewReferrals()
-
-            // Reset restart attempts on success
-            restartAttempts = 0
-
-            // Send recovery notification
-            await sendEmail(
-              "✅ Availity Monitoring Bot Recovered",
-              `The Availity monitoring bot has successfully recovered and resumed operations.\n\n` +
-                `Monitoring resumed at ${new Date().toLocaleString()}.\n\n` +
-                `This is an automated message from the monitoring system.`,
-            )
-          } catch (restartError) {
-            console.error("Failed to restart monitoring:", restartError)
-          }
-        } else {
-          console.error(`Exceeded maximum restart attempts (${MAX_RESTART_ATTEMPTS}). Manual intervention required.`)
-
-          // Send final notification that manual restart is needed
-          await sendEmail(
-            "🚨 URGENT: Availity Bot Requires Manual Restart",
-            `The Availity monitoring bot has failed to restart after ${MAX_RESTART_ATTEMPTS} attempts.\n\n` +
-              `Last activity was at ${lastHeartbeat.toLocaleString()}.\n\n` +
-              `MANUAL INTERVENTION REQUIRED: Please restart the application manually to resume monitoring.\n\n` +
-              `This is an automated message from the monitoring system.`,
-          )
-        }
+        console.log("Down notification sent. Waiting for manual restart.")
+      } else if (timeSinceLastHeartbeat <= HEARTBEAT_TIMEOUT_MS && notificationSent) {
+        // If the bot is active again and we previously sent a notification
+        notificationSent = false
+        console.log("Bot appears to be active again. Resetting notification flag.")
       } else {
         console.log(`Heartbeat check: Bot active, last activity ${timeSinceLastHeartbeat / 1000} seconds ago`)
       }
@@ -2894,71 +2858,32 @@ export async function startReferralMonitoring(): Promise<void> {
 
   // Set up heartbeat monitoring to detect if the bot stops working
   if (!heartbeatInterval) {
+    let notificationSent = false
+
     heartbeatInterval = setInterval(async () => {
       const now = new Date()
       const timeSinceLastHeartbeat = now.getTime() - lastHeartbeat.getTime()
 
-      if (timeSinceLastHeartbeat > HEARTBEAT_TIMEOUT_MS) {
+      if (timeSinceLastHeartbeat > HEARTBEAT_TIMEOUT_MS && !notificationSent) {
         console.error(`⚠️ Bot appears to be inactive for ${timeSinceLastHeartbeat / 1000} seconds!`)
 
-        // Send notification that the bot is down
+        // Send notification that the bot is down - ONLY ONCE
         await sendEmail(
           "⚠️ ALERT: Availity Monitoring Bot is Down",
           `The Availity monitoring bot has not reported activity for ${Math.floor(timeSinceLastHeartbeat / 1000)} seconds.\n\n` +
             `Last activity was at ${lastHeartbeat.toLocaleString()}.\n\n` +
-            `Please restart the application to resume monitoring.\n\n` +
+            `MANUAL INTERVENTION REQUIRED: Please restart the application to resume monitoring.\n\n` +
             `This is an automated message from the monitoring system.`,
         )
 
-        // Try to restart the monitoring if possible
-        if (restartAttempts < MAX_RESTART_ATTEMPTS) {
-          restartAttempts++
-          console.log(`Attempting to restart monitoring (attempt ${restartAttempts} of ${MAX_RESTART_ATTEMPTS})...`)
+        // Mark notification as sent so we don't send it again
+        notificationSent = true
 
-          try {
-            // Clear existing interval
-            clearInterval(intervalId)
-
-            // Close existing browser if any
-            await closeBrowser()
-
-            // Reset monitoring state
-            isMonitoring = false
-
-            // Try to restart the process
-            await checkForNewReferrals()
-
-            // Set up a new interval
-            setInterval(performScheduledCheck, MONITORING_INTERVAL_MS)
-
-            // Reset restart attempts on success
-            restartAttempts = 0
-
-            // Update heartbeat timestamp
-            lastHeartbeat = new Date()
-
-            // Send recovery notification
-            await sendEmail(
-              "✅ Availity Monitoring Bot Recovered",
-              `The Availity monitoring bot has successfully recovered and resumed operations.\n\n` +
-                `Monitoring resumed at ${new Date().toLocaleString()}.\n\n` +
-                `This is an automated message from the monitoring system.`,
-            )
-          } catch (restartError) {
-            console.error("Failed to restart monitoring:", restartError)
-          }
-        } else {
-          console.error(`Exceeded maximum restart attempts (${MAX_RESTART_ATTEMPTS}). Manual intervention required.`)
-
-          // Send final notification that manual restart is needed
-          await sendEmail(
-            "🚨 URGENT: Availity Bot Requires Manual Restart",
-            `The Availity monitoring bot has failed to restart after ${MAX_RESTART_ATTEMPTS} attempts.\n\n` +
-              `Last activity was at ${lastHeartbeat.toLocaleString()}.\n\n` +
-              `MANUAL INTERVENTION REQUIRED: Please restart the application manually to resume monitoring.\n\n` +
-              `This is an automated message from the monitoring system.`,
-          )
-        }
+        console.log("Down notification sent. Waiting for manual restart.")
+      } else if (timeSinceLastHeartbeat <= HEARTBEAT_TIMEOUT_MS && notificationSent) {
+        // If the bot is active again and we previously sent a notification
+        notificationSent = false
+        console.log("Bot appears to be active again. Resetting notification flag.")
       } else {
         console.log(`Heartbeat check: Bot active, last activity ${timeSinceLastHeartbeat / 1000} seconds ago`)
       }
