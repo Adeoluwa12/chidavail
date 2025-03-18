@@ -97,16 +97,16 @@
 //       headless: true,
 //       // headless: "new" as any,
 //       args: [
-//         '--no-sandbox',
-//         '--disable-setuid-sandbox',
-//         '--disable-dev-shm-usage',
-//         '--disable-accelerated-2d-canvas',
-//         '--no-first-run',
-//         '--no-zygote',
-//         '--single-process',
-//         '--disable-gpu'
+//         "--no-sandbox",
+//         "--disable-setuid-sandbox",
+//         "--disable-dev-shm-usage",
+//         "--disable-accelerated-2d-canvas",
+//         "--no-first-run",
+//         "--no-zygote",
+//         "--single-process",
+//         "--disable-gpu",
 //       ],
-      
+
 //       defaultViewport: { width: 1280, height: 800 },
 //       timeout: 30000,
 //     })
@@ -845,29 +845,53 @@
 
 // // Function to extract member information from the referrals page
 // async function extractMemberInformation(frame: any): Promise<MemberData[]> {
-//   console.log("Extracting member information from referrals page...")
+//   console.log("Extracting member information from referrals page...");
 //   try {
 //     // Wait for the referrals content to load
-//     await frame.waitForSelector(".incoming-referral-info", { timeout: 15000 })
+//     await frame.waitForSelector(".incoming-referral-info", { timeout: 15000 }).catch(async () => {
+//       // If no referrals are found, send a notification and start monitoring
+//       console.log("No members found in referrals page.");
 
-//     // Extract member information from the custom div structure
-//     const members = await extractMembersFromFrame(frame)
+//       // Send email notification that no members were found
+//       await sendEmail(
+//         "Availity Referrals Monitoring Active",
+//         "No members were found in the referrals section at this time.\n\n" +
+//           "The monitoring system is active and will check for new members every 30 seconds.\n\n" +
+//           "You will receive an email notification as soon as a new member is detected.",
+//       );
+
+//       // Start continuous monitoring
+//       await startContinuousMonitoring(frame);
+
+//       return [];
+//     });
+
+//     // If referrals are found, extract member information
+//     const members = await extractMembersFromFrame(frame);
 
 //     // Send email with the extracted member information
 //     if (members.length > 0) {
-//       await sendMemberInformationEmail(members)
+//       await sendMemberInformationEmail(members);
+//     } else {
+//       // Send email notification that no members were found
+//       await sendEmail(
+//         "Availity Referrals Monitoring Active",
+//         "No members were found in the referrals section at this time.\n\n" +
+//           "The monitoring system is active and will check for new members every 30 seconds.\n\n" +
+//           "You will receive an email notification as soon as a new member is detected.",
+//       );
 //     }
 
 //     // Save members to database
-//     await saveMembersToDatabase(members)
+//     await saveMembersToDatabase(members);
 
 //     // Start continuous monitoring for new referrals
-//     startContinuousMonitoring(frame)
+//     await startContinuousMonitoring(frame);
 
-//     return members
+//     return members;
 //   } catch (error) {
-//     console.error("Error extracting member information:", error)
-//     return []
+//     console.error("Error extracting member information:", error);
+//     return [];
 //   }
 // }
 
@@ -1063,49 +1087,48 @@
 //   }
 // }
 
-// // Function to start continuous monitoring for new referrals
 // async function startContinuousMonitoring(frame: any): Promise<void> {
 //   if (isMonitoring) {
-//     console.log("Monitoring already active, skipping setup")
-//     return // Already monitoring
+//     console.log("Monitoring already active, skipping setup");
+//     return; // Already monitoring
 //   }
 
-//   console.log("Starting continuous monitoring for new referrals")
-//   isMonitoring = true
+//   console.log("Starting continuous monitoring for new referrals");
+//   isMonitoring = true;
 
 //   // Store the current members for comparison
-//   currentMembers = await extractMembersFromFrame(frame)
-//   console.log(`Initial monitoring state: ${currentMembers.length} members`)
+//   currentMembers = await extractMembersFromFrame(frame);
+//   console.log(`Initial monitoring state: ${currentMembers.length} members`);
 
 //   // Set up the interval to check for new referrals every 30 seconds
 //   monitoringInterval = setInterval(async () => {
 //     try {
-//       console.log("Checking for new referrals...")
+//       console.log("Checking for new referrals...");
 //       // Extract the current members from the frame
-//       const newMembers = await extractMembersFromFrame(frame)
-//       console.log(`Found ${newMembers.length} members, comparing with previous ${currentMembers.length} members`)
+//       const newMembers = await extractMembersFromFrame(frame);
+//       console.log(`Found ${newMembers.length} members, comparing with previous ${currentMembers.length} members`);
 
 //       // Compare with previous members to find new ones
-//       const addedMembers = findNewMembers(currentMembers, newMembers)
+//       const addedMembers = findNewMembers(currentMembers, newMembers);
 
 //       // If new members are found, process them
 //       if (addedMembers.length > 0) {
-//         console.log(`Found ${addedMembers.length} new members!`)
+//         console.log(`Found ${addedMembers.length} new members!`);
 //         // Send notifications for new members
-//         await processNewMembers(addedMembers)
+//         await processNewMembers(addedMembers);
 //       } else {
-//         console.log("No new members found")
+//         console.log("No new members found");
 //       }
 
 //       // Update the current members list
-//       currentMembers = newMembers
+//       currentMembers = newMembers;
 //     } catch (error) {
-//       console.error("Error during monitoring check:", error)
+//       console.error("Error during monitoring check:", error);
 //       // Log error but continue monitoring
 //     }
-//   }, MONITORING_INTERVAL_MS) // Check every 30 seconds
+//   }, MONITORING_INTERVAL_MS); // Check every 30 seconds
 
-//   console.log(`Monitoring interval set up for every ${MONITORING_INTERVAL_MS / 1000} seconds`)
+//   console.log(`Monitoring interval set up for every ${MONITORING_INTERVAL_MS / 1000} seconds`);
 // }
 
 // // Helper function to find new members by comparing two arrays
@@ -1113,7 +1136,7 @@
 //   return newMembers.filter(
 //     (newMember) =>
 //       !oldMembers.some(
-//         (oldMember) => oldMember.memberID === newMember.memberID && oldMember.memberName === oldMember.memberName,
+//         (oldMember) => oldMember.memberID === newMember.memberID && oldMember.memberName === newMember.memberName,
 //       ),
 //   )
 // }
@@ -1258,6 +1281,8 @@
 //           await savedReferral.save()
 //         }
 //       }
+//     } else {
+//       console.log("No new referrals found in this check")
 //     }
 
 //     // Update last check time
@@ -1399,6 +1424,10 @@ let lastCheckTime = new Date()
 let monitoringInterval: NodeJS.Timeout | null = null
 let isMonitoring = false
 let currentMembers: MemberData[] = []
+let lastHeartbeat = new Date()
+let heartbeatInterval: NodeJS.Timeout | null = null
+let restartAttempts = 0
+const MAX_RESTART_ATTEMPTS = 5
 
 // Constants
 const AVAILITY_URL = "https://apps.availity.com"
@@ -1406,6 +1435,8 @@ const LOGIN_URL = "https://apps.availity.com/availity/web/public.elegant.login"
 const REFERRALS_API_URL = "https://apps.availity.com/api/v1/proxy/anthem/provconn/v1/carecentral/ltss/referral/details"
 const TOTP_SECRET = process.env.TOTP_SECRET || "RU4SZCAW4UESMUQNCG3MXTWKXA"
 const MONITORING_INTERVAL_MS = 30000 // 30 seconds
+const HEARTBEAT_INTERVAL_MS = 60000 // 1 minute
+const HEARTBEAT_TIMEOUT_MS = 180000 // 3 minutes
 
 // Interfaces
 interface ReferralResponse {
@@ -1430,6 +1461,7 @@ interface MemberData {
   serviceName?: string
   status?: string
   requestDate?: string
+  county?: string
   additionalInfo?: string
 }
 
@@ -2228,12 +2260,12 @@ async function navigateToCareCentral(page: Page): Promise<void> {
 
 // Function to extract member information from the referrals page
 async function extractMemberInformation(frame: any): Promise<MemberData[]> {
-  console.log("Extracting member information from referrals page...");
+  console.log("Extracting member information from referrals page...")
   try {
     // Wait for the referrals content to load
     await frame.waitForSelector(".incoming-referral-info", { timeout: 15000 }).catch(async () => {
       // If no referrals are found, send a notification and start monitoring
-      console.log("No members found in referrals page.");
+      console.log("No members found in referrals page.")
 
       // Send email notification that no members were found
       await sendEmail(
@@ -2241,20 +2273,20 @@ async function extractMemberInformation(frame: any): Promise<MemberData[]> {
         "No members were found in the referrals section at this time.\n\n" +
           "The monitoring system is active and will check for new members every 30 seconds.\n\n" +
           "You will receive an email notification as soon as a new member is detected.",
-      );
+      )
 
       // Start continuous monitoring
-      await startContinuousMonitoring(frame);
+      await startContinuousMonitoring(frame)
 
-      return [];
-    });
+      return []
+    })
 
     // If referrals are found, extract member information
-    const members = await extractMembersFromFrame(frame);
+    const members = await extractMembersFromFrame(frame)
 
     // Send email with the extracted member information
     if (members.length > 0) {
-      await sendMemberInformationEmail(members);
+      await sendMemberInformationEmail(members)
     } else {
       // Send email notification that no members were found
       await sendEmail(
@@ -2262,19 +2294,19 @@ async function extractMemberInformation(frame: any): Promise<MemberData[]> {
         "No members were found in the referrals section at this time.\n\n" +
           "The monitoring system is active and will check for new members every 30 seconds.\n\n" +
           "You will receive an email notification as soon as a new member is detected.",
-      );
+      )
     }
 
     // Save members to database
-    await saveMembersToDatabase(members);
+    await saveMembersToDatabase(members)
 
     // Start continuous monitoring for new referrals
-    await startContinuousMonitoring(frame);
+    await startContinuousMonitoring(frame)
 
-    return members;
+    return members
   } catch (error) {
-    console.error("Error extracting member information:", error);
-    return [];
+    console.error("Error extracting member information:", error)
+    return []
   }
 }
 
@@ -2288,6 +2320,7 @@ async function extractMembersFromFrame(frame: any): Promise<MemberData[]> {
         serviceName: string
         status: string
         requestDate: string
+        county: string
         additionalInfo: string
       }> = []
 
@@ -2375,6 +2408,7 @@ async function extractMembersFromFrame(frame: any): Promise<MemberData[]> {
             serviceName,
             status,
             requestDate,
+            county,
             additionalInfo: `Region: ${region}, County: ${county}, Program: ${program}, YOB: ${yearOfBirth}, Zip: ${zipCode}`,
           }
 
@@ -2409,6 +2443,10 @@ async function sendMemberInformationEmail(members: MemberData[]): Promise<void> 
 
       if (member.status) {
         emailContent += `Status: ${member.status}\n`
+      }
+
+      if (member.county) {
+        emailContent += `County: ${member.county}\n`
       }
 
       if (member.requestDate) {
@@ -2446,6 +2484,7 @@ async function saveMembersToDatabase(members: MemberData[]): Promise<void> {
           memberID: member.memberID,
           serviceName: member.serviceName || "",
           status: member.status || "",
+          county: member.county || "",
           requestOn: member.requestDate || new Date().toISOString(),
           isNotified: true, // Already notified since we're extracting it now
         })
@@ -2470,48 +2509,123 @@ async function saveMembersToDatabase(members: MemberData[]): Promise<void> {
   }
 }
 
+// Function to start continuous monitoring for new referrals
 async function startContinuousMonitoring(frame: any): Promise<void> {
   if (isMonitoring) {
-    console.log("Monitoring already active, skipping setup");
-    return; // Already monitoring
+    console.log("Monitoring already active, skipping setup")
+    return // Already monitoring
   }
 
-  console.log("Starting continuous monitoring for new referrals");
-  isMonitoring = true;
+  console.log("Starting continuous monitoring for new referrals")
+  isMonitoring = true
 
   // Store the current members for comparison
-  currentMembers = await extractMembersFromFrame(frame);
-  console.log(`Initial monitoring state: ${currentMembers.length} members`);
+  currentMembers = await extractMembersFromFrame(frame)
+  console.log(`Initial monitoring state: ${currentMembers.length} members`)
 
   // Set up the interval to check for new referrals every 30 seconds
   monitoringInterval = setInterval(async () => {
     try {
-      console.log("Checking for new referrals...");
+      console.log("Checking for new referrals...")
       // Extract the current members from the frame
-      const newMembers = await extractMembersFromFrame(frame);
-      console.log(`Found ${newMembers.length} members, comparing with previous ${currentMembers.length} members`);
+      const newMembers = await extractMembersFromFrame(frame)
+      console.log(`Found ${newMembers.length} members, comparing with previous ${currentMembers.length} members`)
 
       // Compare with previous members to find new ones
-      const addedMembers = findNewMembers(currentMembers, newMembers);
+      const addedMembers = findNewMembers(currentMembers, newMembers)
 
       // If new members are found, process them
       if (addedMembers.length > 0) {
-        console.log(`Found ${addedMembers.length} new members!`);
+        console.log(`Found ${addedMembers.length} new members!`)
         // Send notifications for new members
-        await processNewMembers(addedMembers);
+        await processNewMembers(addedMembers)
       } else {
-        console.log("No new members found");
+        console.log("No new members found")
       }
 
       // Update the current members list
-      currentMembers = newMembers;
+      currentMembers = newMembers
+
+      // Update heartbeat timestamp
+      lastHeartbeat = new Date()
     } catch (error) {
-      console.error("Error during monitoring check:", error);
+      console.error("Error during monitoring check:", error)
       // Log error but continue monitoring
     }
-  }, MONITORING_INTERVAL_MS); // Check every 30 seconds
+  }, MONITORING_INTERVAL_MS) // Check every 30 seconds
 
-  console.log(`Monitoring interval set up for every ${MONITORING_INTERVAL_MS / 1000} seconds`);
+  // Set up heartbeat monitoring to detect if the bot stops working
+  if (!heartbeatInterval) {
+    heartbeatInterval = setInterval(async () => {
+      const now = new Date()
+      const timeSinceLastHeartbeat = now.getTime() - lastHeartbeat.getTime()
+
+      if (timeSinceLastHeartbeat > HEARTBEAT_TIMEOUT_MS) {
+        console.error(`⚠️ Bot appears to be inactive for ${timeSinceLastHeartbeat / 1000} seconds!`)
+
+        // Send notification that the bot is down
+        await sendEmail(
+          "⚠️ ALERT: Availity Monitoring Bot is Down",
+          `The Availity monitoring bot has not reported activity for ${Math.floor(timeSinceLastHeartbeat / 1000)} seconds.\n\n` +
+            `Last activity was at ${lastHeartbeat.toLocaleString()}.\n\n` +
+            `Please restart the application to resume monitoring.\n\n` +
+            `This is an automated message from the monitoring system.`,
+        )
+
+        // Try to restart the monitoring if possible
+        if (restartAttempts < MAX_RESTART_ATTEMPTS) {
+          restartAttempts++
+          console.log(`Attempting to restart monitoring (attempt ${restartAttempts} of ${MAX_RESTART_ATTEMPTS})...`)
+
+          try {
+            // Close existing browser if any
+            await closeBrowser()
+
+            // Clear intervals
+            if (monitoringInterval) {
+              clearInterval(monitoringInterval)
+              monitoringInterval = null
+            }
+
+            // Reset monitoring state
+            isMonitoring = false
+
+            // Try to restart the process
+            await checkForNewReferrals()
+
+            // Reset restart attempts on success
+            restartAttempts = 0
+
+            // Send recovery notification
+            await sendEmail(
+              "✅ Availity Monitoring Bot Recovered",
+              `The Availity monitoring bot has successfully recovered and resumed operations.\n\n` +
+                `Monitoring resumed at ${new Date().toLocaleString()}.\n\n` +
+                `This is an automated message from the monitoring system.`,
+            )
+          } catch (restartError) {
+            console.error("Failed to restart monitoring:", restartError)
+          }
+        } else {
+          console.error(`Exceeded maximum restart attempts (${MAX_RESTART_ATTEMPTS}). Manual intervention required.`)
+
+          // Send final notification that manual restart is needed
+          await sendEmail(
+            "🚨 URGENT: Availity Bot Requires Manual Restart",
+            `The Availity monitoring bot has failed to restart after ${MAX_RESTART_ATTEMPTS} attempts.\n\n` +
+              `Last activity was at ${lastHeartbeat.toLocaleString()}.\n\n` +
+              `MANUAL INTERVENTION REQUIRED: Please restart the application manually to resume monitoring.\n\n` +
+              `This is an automated message from the monitoring system.`,
+          )
+        }
+      } else {
+        console.log(`Heartbeat check: Bot active, last activity ${timeSinceLastHeartbeat / 1000} seconds ago`)
+      }
+    }, HEARTBEAT_INTERVAL_MS)
+  }
+
+  console.log(`Monitoring interval set up for every ${MONITORING_INTERVAL_MS / 1000} seconds`)
+  console.log(`Heartbeat monitoring set up for every ${HEARTBEAT_INTERVAL_MS / 1000} seconds`)
 }
 
 // Helper function to find new members by comparing two arrays
@@ -2545,6 +2659,10 @@ async function processNewMembers(members: MemberData[]): Promise<void> {
 
       if (member.status) {
         emailContent += `Status: ${member.status}\n`
+      }
+
+      if (member.county) {
+        emailContent += `County: ${member.county}\n`
       }
 
       if (member.requestDate) {
@@ -2670,6 +2788,9 @@ export async function checkForNewReferrals(): Promise<void> {
 
     // Update last check time
     lastCheckTime = currentTime
+
+    // Update heartbeat timestamp
+    lastHeartbeat = new Date()
   } catch (error) {
     console.error("Error checking for new referrals:", error)
 
@@ -2694,12 +2815,13 @@ function extractXsrfToken(cookies: string): string {
   return match ? match[1] : ""
 }
 
-// Replace the startReferralMonitoring function with this improved version that runs every 30 seconds
-
 // Function to start the monitoring process
 export async function startReferralMonitoring(): Promise<void> {
   console.log("🚀 Starting referral monitoring process with 30-second interval...")
   console.log(`⏰ Current time: ${new Date().toISOString()}`)
+
+  // Initialize heartbeat
+  lastHeartbeat = new Date()
 
   // Track the number of checks for debugging
   let checkCount = 0
@@ -2740,6 +2862,9 @@ export async function startReferralMonitoring(): Promise<void> {
       const endTime = new Date()
       const duration = (endTime.getTime() - startTime.getTime()) / 1000
       console.log(`✅ Scheduled check #${checkCount} completed successfully in ${duration.toFixed(2)} seconds`)
+
+      // Update heartbeat timestamp on successful check
+      lastHeartbeat = new Date()
     } catch (error) {
       console.error(`❌ Error in scheduled API check #${checkCount}:`, error)
 
@@ -2750,6 +2875,9 @@ export async function startReferralMonitoring(): Promise<void> {
         await delay(5000)
         await checkForNewReferrals()
         console.log(`✅ Retry for check #${checkCount} successful`)
+
+        // Update heartbeat timestamp on successful retry
+        lastHeartbeat = new Date()
       } catch (retryError) {
         console.error(`❌ Scheduled check #${checkCount} retry failed:`, retryError)
         // Continue even if retry fails
@@ -2757,20 +2885,99 @@ export async function startReferralMonitoring(): Promise<void> {
     }
 
     // Log next scheduled check time
-    const nextCheckTime = new Date(Date.now() + 30000)
+    const nextCheckTime = new Date(Date.now() + MONITORING_INTERVAL_MS)
     console.log(`🔔 Next check (#${checkCount + 1}) scheduled for ${nextCheckTime.toISOString()}`)
   }
 
   // Use setInterval with the exact millisecond value (30000 ms = 30 seconds)
-  const intervalId = setInterval(performScheduledCheck, 30000)
+  const intervalId = setInterval(performScheduledCheck, MONITORING_INTERVAL_MS)
+
+  // Set up heartbeat monitoring to detect if the bot stops working
+  if (!heartbeatInterval) {
+    heartbeatInterval = setInterval(async () => {
+      const now = new Date()
+      const timeSinceLastHeartbeat = now.getTime() - lastHeartbeat.getTime()
+
+      if (timeSinceLastHeartbeat > HEARTBEAT_TIMEOUT_MS) {
+        console.error(`⚠️ Bot appears to be inactive for ${timeSinceLastHeartbeat / 1000} seconds!`)
+
+        // Send notification that the bot is down
+        await sendEmail(
+          "⚠️ ALERT: Availity Monitoring Bot is Down",
+          `The Availity monitoring bot has not reported activity for ${Math.floor(timeSinceLastHeartbeat / 1000)} seconds.\n\n` +
+            `Last activity was at ${lastHeartbeat.toLocaleString()}.\n\n` +
+            `Please restart the application to resume monitoring.\n\n` +
+            `This is an automated message from the monitoring system.`,
+        )
+
+        // Try to restart the monitoring if possible
+        if (restartAttempts < MAX_RESTART_ATTEMPTS) {
+          restartAttempts++
+          console.log(`Attempting to restart monitoring (attempt ${restartAttempts} of ${MAX_RESTART_ATTEMPTS})...`)
+
+          try {
+            // Clear existing interval
+            clearInterval(intervalId)
+
+            // Close existing browser if any
+            await closeBrowser()
+
+            // Reset monitoring state
+            isMonitoring = false
+
+            // Try to restart the process
+            await checkForNewReferrals()
+
+            // Set up a new interval
+            setInterval(performScheduledCheck, MONITORING_INTERVAL_MS)
+
+            // Reset restart attempts on success
+            restartAttempts = 0
+
+            // Update heartbeat timestamp
+            lastHeartbeat = new Date()
+
+            // Send recovery notification
+            await sendEmail(
+              "✅ Availity Monitoring Bot Recovered",
+              `The Availity monitoring bot has successfully recovered and resumed operations.\n\n` +
+                `Monitoring resumed at ${new Date().toLocaleString()}.\n\n` +
+                `This is an automated message from the monitoring system.`,
+            )
+          } catch (restartError) {
+            console.error("Failed to restart monitoring:", restartError)
+          }
+        } else {
+          console.error(`Exceeded maximum restart attempts (${MAX_RESTART_ATTEMPTS}). Manual intervention required.`)
+
+          // Send final notification that manual restart is needed
+          await sendEmail(
+            "🚨 URGENT: Availity Bot Requires Manual Restart",
+            `The Availity monitoring bot has failed to restart after ${MAX_RESTART_ATTEMPTS} attempts.\n\n` +
+              `Last activity was at ${lastHeartbeat.toLocaleString()}.\n\n` +
+              `MANUAL INTERVENTION REQUIRED: Please restart the application manually to resume monitoring.\n\n` +
+              `This is an automated message from the monitoring system.`,
+          )
+        }
+      } else {
+        console.log(`Heartbeat check: Bot active, last activity ${timeSinceLastHeartbeat / 1000} seconds ago`)
+      }
+    }, HEARTBEAT_INTERVAL_MS)
+  }
 
   console.log(`🔔 Monitoring setup complete - checking every 30 seconds`)
-  console.log(`⏰ Next check (#${checkCount + 1}) scheduled for ${new Date(Date.now() + 30000).toISOString()}`)
+  console.log(
+    `⏰ Next check (#${checkCount + 1}) scheduled for ${new Date(Date.now() + MONITORING_INTERVAL_MS).toISOString()}`,
+  )
+  console.log(`💓 Heartbeat monitoring active - checking every ${HEARTBEAT_INTERVAL_MS / 1000} seconds`)
 
   // Add a function to stop monitoring if needed
   process.on("SIGINT", () => {
     console.log("🛑 Stopping monitoring due to application shutdown...")
     clearInterval(intervalId)
+    if (heartbeatInterval) {
+      clearInterval(heartbeatInterval)
+    }
     closeBrowser().then(() => {
       console.log("✅ Monitoring stopped and browser closed successfully")
       process.exit(0)
@@ -2785,6 +2992,13 @@ export function stopReferralMonitoring(): void {
     monitoringInterval = null
     console.log("Referral monitoring stopped")
   }
+
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval)
+    heartbeatInterval = null
+    console.log("Heartbeat monitoring stopped")
+  }
+
   isMonitoring = false
 }
 
