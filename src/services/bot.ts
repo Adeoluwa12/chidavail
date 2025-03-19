@@ -1541,11 +1541,14 @@ let isMonitoring = false
 let currentMembers: MemberData[] = []
 let lastHeartbeat = new Date()
 let heartbeatInterval: NodeJS.Timeout | null = null
-let isLoggedIn = false // Track login state to prevent redundant logins
+let isLoggedIn = false
+let isNavigatedToReferrals = false
+let currentFrame: any = null
 
 // Constants
 const AVAILITY_URL = "https://apps.availity.com"
 const LOGIN_URL = "https://apps.availity.com/availity/web/public.elegant.login"
+const CARE_CENTRAL_URL = "https://apps.availity.com/public/apps/care-central/"
 const REFERRALS_API_URL = "https://apps.availity.com/api/v1/proxy/anthem/provconn/v1/carecentral/ltss/referral/details"
 const TOTP_SECRET = process.env.TOTP_SECRET || "RU4SZCAW4UESMUQNCG3MXTWKXA"
 const MONITORING_INTERVAL_MS = 30000 // 30 seconds
@@ -1579,12 +1582,12 @@ interface MemberData {
   additionalInfo?: string
 }
 
-// Helper function for timeouts - reduced delay times
+// Helper function for timeouts
 async function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-// Retry operation helper - reduced delay time
+// Retry operation helper
 async function retryOperation(operation: () => Promise<void>, retries = 3, delayMs = 1000) {
   for (let i = 0; i < retries; i++) {
     try {
@@ -1616,18 +1619,17 @@ export async function closeBrowser(): Promise<void> {
     await browser.close()
     browser = null
     page = null
-    isLoggedIn = false // Reset login state when browser is closed
+    currentFrame = null
+    isLoggedIn = false
+    isNavigatedToReferrals = false
     console.log("Browser closed successfully")
   }
 }
 
 export async function setupBot(): Promise<void> {
   try {
-    // If browser is already set up, don't recreate it
-    if (browser && page) {
-      console.log("Browser already set up, skipping initialization")
-      return
-    }
+    // Close any existing browser instance first
+    await closeBrowser()
     
     browser = await puppeteer.launch({
       headless: true,
@@ -1642,7 +1644,7 @@ export async function setupBot(): Promise<void> {
         "--disable-gpu",
       ],
       defaultViewport: { width: 1280, height: 800 },
-      timeout: 30000,
+      timeout: 60000, // Increased timeout
     })
 
     console.log("✅ Browser launched successfully")
@@ -1654,26 +1656,40 @@ export async function setupBot(): Promise<void> {
     await page.setViewport({ width: 1280, height: 800 })
 
     // Add additional configurations
-    await page.setDefaultNavigationTimeout(30000)
-    await page.setDefaultTimeout(30000)
+    await page.setDefaultNavigationTimeout(60000) // Increased timeout
+    await page.setDefaultTimeout(60000) // Increased timeout
 
     // Enable request interception to optimize performance
     await page.setRequestInterception(true)
+    
+    // Use a Set to track requests that are already being handled
+    const pendingRequests = new Set<string>()
+    
     page.on("request", (request) => {
-      try {
-        // Block unnecessary resources to speed up page loading
-        const resourceType = request.resourceType()
-        if (resourceType === "image" || resourceType === "font" || resourceType === "media") {
-          request.abort()
-        } else {
-          request.continue()
-        }
-      } catch (error) {
-        // If request is already handled, ignore the error
-        if (!(error instanceof Error) || !error.message.includes("Request is already handled")) {
-          console.error("Error in request interception:", error)
-        }
+      const url = request.url()
+      
+      // Check if this request is already being handled
+      if (pendingRequests.has(url)) {
+        console.log(`Aborting duplicate request to: ${url}`)
+        request.abort()
+        return
       }
+      
+      // Add this request to the pending set
+      pendingRequests.add(url)
+      
+      // Block unnecessary resources to speed up page loading
+      const resourceType = request.resourceType()
+      if (resourceType === "image" || resourceType === "font" || resourceType === "media") {
+        request.abort()
+      } else {
+        request.continue()
+      }
+      
+      // Remove from pending set after a short delay
+      setTimeout(() => {
+        pendingRequests.delete(url)
+      }, 5000)
     })
 
     console.log("✅ Bot setup completed")
@@ -1742,11 +1758,16 @@ export async function loginToAvaility(): Promise<boolean> {
   console.log("Starting Availity login process...")
 
   try {
-    // Check if we're already logged in to prevent redundant logins
-    if (isLoggedIn && browser && page) {
-      console.log("Already logged in, skipping login process")
+    // If we're already logged in and on the referrals page, don't log in again
+    if (isLoggedIn && isNavigatedToReferrals && currentFrame) {
+      console.log("Already logged in and on referrals page, skipping login process")
       return true
     }
+    
+    // Reset state
+    isLoggedIn = false
+    isNavigatedToReferrals = false
+    currentFrame = null
 
     if (!browser || !page) {
       console.log("Browser or page not initialized. Setting up bot...")
@@ -1759,6 +1780,22 @@ export async function loginToAvaility(): Promise<boolean> {
 
     console.log("Navigating to Availity login page...")
     await page.goto(LOGIN_URL, { waitUntil: "networkidle2" })
+
+    // Check if we're already logged in
+    const currentUrl = page.url()
+    if (!currentUrl.includes("login") && !currentUrl.includes("authenticate")) {
+      console.log("Already logged in based on URL check")
+      isLoggedIn = true
+      
+      // Handle any popups that might appear
+      await handlePopups(page)
+      
+      // Navigate to Care Central
+      console.log("Proceeding to navigate to Care Central...")
+      await navigateToCareCentral(page)
+      
+      return true
+    }
 
     // Enter username and password
     console.log("Entering credentials...")
@@ -1781,7 +1818,7 @@ export async function loginToAvaility(): Promise<boolean> {
     }
 
     // Check if we're logged in by looking for dashboard elements
-    const dashboardFound = await page.evaluate(() => {
+    const isLoggedInCheck = await page.evaluate(() => {
       const dashboardElements =
         document.querySelector(".top-applications") !== null ||
         document.querySelector(".av-dashboard") !== null ||
@@ -1808,14 +1845,20 @@ export async function loginToAvaility(): Promise<boolean> {
     if (is2FARequired) {
       console.log("2FA authentication is required. Handling 2FA...")
       await handle2FA(page)
-    } else if (dashboardFound) {
+      isLoggedIn = true
+    } else if (isLoggedInCheck) {
       console.log("Already logged in - no 2FA required")
+      isLoggedIn = true
     } else {
       const currentUrl = page.url()
       console.log(`Current URL: ${currentUrl}`)
 
       if (currentUrl.includes("login") || currentUrl.includes("authenticate")) {
         throw new Error("Login failed - still on login page")
+      } else {
+        // Assume we're logged in if we're not on the login page
+        console.log("Assuming logged in based on URL not being login page")
+        isLoggedIn = true
       }
     }
 
@@ -1829,14 +1872,13 @@ export async function loginToAvaility(): Promise<boolean> {
     console.log("Proceeding to navigate to Care Central...")
     await navigateToCareCentral(page)
 
-    // Set login state to true after successful login and navigation
-    isLoggedIn = true
-    
     console.log("Login process completed successfully")
     return true
   } catch (error) {
     console.error("Error during login attempt:", error)
     isLoggedIn = false
+    isNavigatedToReferrals = false
+    currentFrame = null
     throw error
   }
 }
@@ -2000,7 +2042,7 @@ async function handle2FA(page: Page): Promise<void> {
       // Navigation timeout after 2FA, but this might be expected
     }
 
-    const dashboardFound = await page.evaluate(() => {
+    const isLoggedInCheck = await page.evaluate(() => {
       const dashboardElements =
         document.querySelector(".top-applications") !== null ||
         document.querySelector(".av-dashboard") !== null ||
@@ -2013,7 +2055,7 @@ async function handle2FA(page: Page): Promise<void> {
       return dashboardElements || cookieConsent
     })
 
-    if (!dashboardFound) {
+    if (!isLoggedInCheck) {
       throw new Error("2FA verification failed - no dashboard elements found")
     }
 
@@ -2093,62 +2135,38 @@ async function handleCookieConsent(page: Page): Promise<void> {
 }
 
 async function navigateToCareCentral(page: Page): Promise<void> {
+  // If we're already on the referrals page, don't navigate again
+  if (isNavigatedToReferrals && currentFrame) {
+    console.log("Already on referrals page, skipping navigation")
+    return
+  }
+
   console.log("Navigating to Care Central...")
   try {
-    // Check if we're already on the Care Central page
-    const currentUrl = page.url()
-    if (currentUrl.includes("care-central")) {
-      console.log("Already on Care Central page, skipping navigation")
-      
-      // Get all frames and find the one with name="newBody"
-      const frames = page.frames()
-      const newBodyFrame = frames.find((frame) => frame.name() === "newBody")
-      
-      if (newBodyFrame) {
-        console.log("Found newBody iframe, proceeding to extract member information")
-        await extractMemberInformation(newBodyFrame)
-        return
-      }
-    }
-    
-    // Wait for the dashboard to load
-    await page.waitForSelector("body", { timeout: 30000, visible: true })
-
-    // Wait for a bit to ensure the page is fully loaded
-    await delay(1000)
-
-    // Try direct navigation to Care Central URL first
+    // Try direct navigation to Care Central first
+    console.log("Attempting direct navigation to Care Central URL...")
     try {
-      console.log("Attempting direct navigation to Care Central URL...")
-      await page.goto("https://apps.availity.com/public/apps/care-central/", { 
-        waitUntil: "networkidle2", 
-        timeout: 30000 
-      })
+      await page.goto(CARE_CENTRAL_URL, { waitUntil: "networkidle2", timeout: 30000 })
       console.log("Direct navigation to Care Central completed")
-    } catch (directNavError) {
-      console.log("Direct navigation failed, falling back to UI navigation:", directNavError)
       
-      // Look for "My Top Applications" heading first
-      const myTopAppsHeadingSelectors = [
-        'h1:has-text("My Top Applications")',
-        'h2:has-text("My Top Applications")',
-        'h3:has-text("My Top Applications")',
-        'h4:has-text("My Top Applications")',
-        'div:has-text("My Top Applications")',
-        'span:has-text("My Top Applications")',
-      ]
-
-      let myTopAppsHeading = null
-      for (const selector of myTopAppsHeadingSelectors) {
-        try {
-          myTopAppsHeading = await page.$(selector)
-          if (myTopAppsHeading) {
-            break
-          }
-        } catch (error) {
-          // Try next selector
-        }
+      // Check if we're on the right page
+      const currentUrl = page.url()
+      console.log(`Current URL after direct navigation: ${currentUrl}`)
+      
+      if (currentUrl.includes("care-central")) {
+        console.log("Successfully navigated directly to Care Central")
+      } else {
+        console.log("Direct navigation did not reach Care Central, falling back to original approach")
+        throw new Error("Direct navigation did not reach Care Central")
       }
+    } catch (directNavError) {
+      console.log("Direct navigation failed, falling back to original approach:", directNavError)
+      
+      // Wait for the dashboard to load
+      await page.waitForSelector("body", { timeout: 30000, visible: true })
+
+      // Wait for a bit to ensure the page is fully loaded
+      await delay(1000)
 
       // Now try to find Care Central by searching for all elements containing that text
       const careCentralElements = await page.evaluate(() => {
@@ -2378,25 +2396,25 @@ async function navigateToCareCentral(page: Page): Promise<void> {
     // Now we need to click on the Referrals button inside the iframe
     // Get the updated frames after navigation
     const updatedFrames = page.frames()
-    const currentFrame = updatedFrames.find((frame) => frame.name() === "newBody")
+    const newFrame = updatedFrames.find((frame) => frame.name() === "newBody")
 
-    if (!currentFrame) {
+    if (!newFrame) {
       throw new Error("Could not find newBody iframe after navigation")
     }
 
     // Look for the Referrals button with data-id="referral"
     try {
       // Wait for the button to be visible
-      await currentFrame.waitForSelector('button[data-id="referral"]', { visible: true, timeout: 10000 })
+      await newFrame.waitForSelector('button[data-id="referral"]', { visible: true, timeout: 10000 })
 
       // Click the Referrals button
-      await currentFrame.click('button[data-id="referral"]')
+      await newFrame.click('button[data-id="referral"]')
 
       // Wait for the page to update after clicking
       await delay(2000)
     } catch (error) {
       // Try alternative approach - evaluate and click directly in the frame
-      const clicked = await currentFrame.evaluate(() => {
+      const clicked = await newFrame.evaluate(() => {
         const buttons = Array.from(document.querySelectorAll("button"))
         const referralButton = buttons.find((button) => button.textContent && button.textContent.includes("Referrals"))
         if (referralButton) {
@@ -2414,10 +2432,18 @@ async function navigateToCareCentral(page: Page): Promise<void> {
       await delay(2000)
     }
 
+    // Store the current frame for future use
+    currentFrame = updatedFrames.find((frame) => frame.name() === "newBody")
+    
+    // Mark that we've successfully navigated to the referrals page
+    isNavigatedToReferrals = true
+
     // Now extract member information from the referrals page
     await extractMemberInformation(currentFrame)
   } catch (error) {
     console.error("Error navigating to Care Central:", error)
+    isNavigatedToReferrals = false
+    currentFrame = null
     throw error
   }
 }
@@ -2691,6 +2717,14 @@ async function startContinuousMonitoring(frame: any): Promise<void> {
   monitoringInterval = setInterval(async () => {
     try {
       console.log("Checking for new referrals...")
+      
+      // Make sure we're still on the referrals page
+      if (!isNavigatedToReferrals || !currentFrame) {
+        console.log("Not on referrals page, attempting to navigate back...")
+        await loginToAvaility()
+        return
+      }
+      
       // Extract the current members from the frame
       const newMembers = await extractMembersFromFrame(frame)
       console.log(`Found ${newMembers.length} members, comparing with previous ${currentMembers.length} members`)
@@ -2715,6 +2749,14 @@ async function startContinuousMonitoring(frame: any): Promise<void> {
     } catch (error) {
       console.error("Error during monitoring check:", error)
       // Log error but continue monitoring
+      
+      // If there's an error, try to recover by logging in again
+      try {
+        console.log("Attempting to recover from error by logging in again...")
+        await loginToAvaility()
+      } catch (loginError) {
+        console.error("Failed to recover from error:", loginError)
+      }
     }
   }, MONITORING_INTERVAL_MS) // Check every 30 seconds
 
@@ -2818,15 +2860,10 @@ async function processNewMembers(members: MemberData[]): Promise<void> {
 export async function checkForNewReferrals(): Promise<void> {
   console.log("Starting API-based check for new referrals...")
   try {
-    // Check if we're already logged in
-    if (!isLoggedIn || !browser || !page) {
-      console.log("Not logged in or browser not initialized, logging in...")
-      const loginSuccess = await loginToAvaility()
-      if (!loginSuccess) {
-        throw new Error("Failed to login to Availity")
-      }
-    } else {
-      console.log("Already logged in, proceeding with API check")
+    // Ensure we're logged in
+    const isLoggedIn = await loginToAvaility()
+    if (!isLoggedIn) {
+      throw new Error("Failed to login to Availity")
     }
 
     // Get session cookies
@@ -2932,11 +2969,12 @@ export async function checkForNewReferrals(): Promise<void> {
       const axiosError = error as AxiosError
       if (axiosError.response && (axiosError.response.status === 401 || axiosError.response.status === 403)) {
         // Clear browser session and try again
-        console.log("Authentication error detected, resetting session...")
-        isLoggedIn = false
         await closeBrowser()
         browser = null
         page = null
+        isLoggedIn = false
+        isNavigatedToReferrals = false
+        currentFrame = null
         throw error // Let the caller handle the retry
       }
     }
@@ -3082,18 +3120,27 @@ export async function startReferralMonitoring(): Promise<void> {
 }
 
 // Stop monitoring when needed
-export function stopReferralMonitoring(): void {
-  if (monitoringInterval) {
-    clearInterval(monitoringInterval)
-    monitoringInterval = null
-    console.log("Referral monitoring stopped")
-  }
+export function stopReferralMonitoring(): Promise<void> {
+  return new Promise(async (resolve) => {
+    if (monitoringInterval) {
+      clearInterval(monitoringInterval)
+      monitoringInterval = null
+      console.log("Referral monitoring stopped")
+    }
 
-  if (heartbeatInterval) {
-    clearInterval(heartbeatInterval)
-    heartbeatInterval = null
-    console.log("Heartbeat monitoring stopped")
-  }
+    if (heartbeatInterval) {
+      clearInterval(heartbeatInterval)
+      heartbeatInterval = null
+      console.log("Heartbeat monitoring stopped")
+    }
 
-  isMonitoring = false
+    isMonitoring = false
+    isLoggedIn = false
+    isNavigatedToReferrals = false
+    
+    // Close the browser
+    await closeBrowser()
+    
+    resolve()
+  })
 }
