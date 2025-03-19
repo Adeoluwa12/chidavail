@@ -62,23 +62,23 @@ async function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-// Retry operation helper - reduced delay time
-async function retryOperation(operation: () => Promise<void>, retries = 3, delayMs = 1000) {
-  for (let i = 0; i < retries; i++) {
-    try {
-      await operation()
-      return
-    } catch (error) {
-      console.log(`Attempt ${i + 1} failed:`, error)
-      if (i < retries - 1) {
-        console.log(`Retrying in ${delayMs}ms...`)
-        await delay(delayMs)
-      } else {
-        throw error
-      }
-    }
-  }
-}
+// // Retry operation helper - reduced delay time
+// async function retryOperation(operation: () => Promise<void>, retries = 3, delayMs = 1000) {
+//   for (let i = 0; i < retries; i++) {
+//     try {
+//       await operation()
+//       return
+//     } catch (error) {
+//       console.log(`Attempt ${i + 1} failed:`, error)
+//       if (i < retries - 1) {
+//         console.log(`Retrying in ${delayMs}ms...`)
+//         await delay(delayMs)
+//       } else {
+//         throw error
+//       }
+//     }
+//   }
+// }
 
 export async function getSessionCookies(): Promise<string> {
   if (!page) {
