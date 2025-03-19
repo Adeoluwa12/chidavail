@@ -16,6 +16,10 @@
 // let monitoringInterval: NodeJS.Timeout | null = null
 // let isMonitoring = false
 // let currentMembers: MemberData[] = []
+// let lastHeartbeat = new Date()
+// let heartbeatInterval: NodeJS.Timeout | null = null
+// const restartAttempts = 0
+// const MAX_RESTART_ATTEMPTS = 5
 
 // // Constants
 // const AVAILITY_URL = "https://apps.availity.com"
@@ -23,6 +27,8 @@
 // const REFERRALS_API_URL = "https://apps.availity.com/api/v1/proxy/anthem/provconn/v1/carecentral/ltss/referral/details"
 // const TOTP_SECRET = process.env.TOTP_SECRET || "RU4SZCAW4UESMUQNCG3MXTWKXA"
 // const MONITORING_INTERVAL_MS = 30000 // 30 seconds
+// const HEARTBEAT_INTERVAL_MS = 60000 // 1 minute
+// const HEARTBEAT_TIMEOUT_MS = 180000 // 3 minutes
 
 // // Interfaces
 // interface ReferralResponse {
@@ -47,6 +53,7 @@
 //   serviceName?: string
 //   status?: string
 //   requestDate?: string
+//   county?: string
 //   additionalInfo?: string
 // }
 
@@ -845,12 +852,12 @@
 
 // // Function to extract member information from the referrals page
 // async function extractMemberInformation(frame: any): Promise<MemberData[]> {
-//   console.log("Extracting member information from referrals page...");
+//   console.log("Extracting member information from referrals page...")
 //   try {
 //     // Wait for the referrals content to load
 //     await frame.waitForSelector(".incoming-referral-info", { timeout: 15000 }).catch(async () => {
 //       // If no referrals are found, send a notification and start monitoring
-//       console.log("No members found in referrals page.");
+//       console.log("No members found in referrals page.")
 
 //       // Send email notification that no members were found
 //       await sendEmail(
@@ -858,20 +865,20 @@
 //         "No members were found in the referrals section at this time.\n\n" +
 //           "The monitoring system is active and will check for new members every 30 seconds.\n\n" +
 //           "You will receive an email notification as soon as a new member is detected.",
-//       );
+//       )
 
 //       // Start continuous monitoring
-//       await startContinuousMonitoring(frame);
+//       await startContinuousMonitoring(frame)
 
-//       return [];
-//     });
+//       return []
+//     })
 
 //     // If referrals are found, extract member information
-//     const members = await extractMembersFromFrame(frame);
+//     const members = await extractMembersFromFrame(frame)
 
 //     // Send email with the extracted member information
 //     if (members.length > 0) {
-//       await sendMemberInformationEmail(members);
+//       await sendMemberInformationEmail(members)
 //     } else {
 //       // Send email notification that no members were found
 //       await sendEmail(
@@ -879,19 +886,19 @@
 //         "No members were found in the referrals section at this time.\n\n" +
 //           "The monitoring system is active and will check for new members every 30 seconds.\n\n" +
 //           "You will receive an email notification as soon as a new member is detected.",
-//       );
+//       )
 //     }
 
 //     // Save members to database
-//     await saveMembersToDatabase(members);
+//     await saveMembersToDatabase(members)
 
 //     // Start continuous monitoring for new referrals
-//     await startContinuousMonitoring(frame);
+//     await startContinuousMonitoring(frame)
 
-//     return members;
+//     return members
 //   } catch (error) {
-//     console.error("Error extracting member information:", error);
-//     return [];
+//     console.error("Error extracting member information:", error)
+//     return []
 //   }
 // }
 
@@ -905,6 +912,7 @@
 //         serviceName: string
 //         status: string
 //         requestDate: string
+//         county: string
 //         additionalInfo: string
 //       }> = []
 
@@ -992,6 +1000,7 @@
 //             serviceName,
 //             status,
 //             requestDate,
+//             county,
 //             additionalInfo: `Region: ${region}, County: ${county}, Program: ${program}, YOB: ${yearOfBirth}, Zip: ${zipCode}`,
 //           }
 
@@ -1026,6 +1035,10 @@
 
 //       if (member.status) {
 //         emailContent += `Status: ${member.status}\n`
+//       }
+
+//       if (member.county) {
+//         emailContent += `County: ${member.county}\n`
 //       }
 
 //       if (member.requestDate) {
@@ -1063,6 +1076,7 @@
 //           memberID: member.memberID,
 //           serviceName: member.serviceName || "",
 //           status: member.status || "",
+//           county: member.county || "",
 //           requestOn: member.requestDate || new Date().toISOString(),
 //           isNotified: true, // Already notified since we're extracting it now
 //         })
@@ -1087,48 +1101,87 @@
 //   }
 // }
 
+// // Function to start continuous monitoring for new referrals
 // async function startContinuousMonitoring(frame: any): Promise<void> {
 //   if (isMonitoring) {
-//     console.log("Monitoring already active, skipping setup");
-//     return; // Already monitoring
+//     console.log("Monitoring already active, skipping setup")
+//     return // Already monitoring
 //   }
 
-//   console.log("Starting continuous monitoring for new referrals");
-//   isMonitoring = true;
+//   console.log("Starting continuous monitoring for new referrals")
+//   isMonitoring = true
 
 //   // Store the current members for comparison
-//   currentMembers = await extractMembersFromFrame(frame);
-//   console.log(`Initial monitoring state: ${currentMembers.length} members`);
+//   currentMembers = await extractMembersFromFrame(frame)
+//   console.log(`Initial monitoring state: ${currentMembers.length} members`)
 
 //   // Set up the interval to check for new referrals every 30 seconds
 //   monitoringInterval = setInterval(async () => {
 //     try {
-//       console.log("Checking for new referrals...");
+//       console.log("Checking for new referrals...")
 //       // Extract the current members from the frame
-//       const newMembers = await extractMembersFromFrame(frame);
-//       console.log(`Found ${newMembers.length} members, comparing with previous ${currentMembers.length} members`);
+//       const newMembers = await extractMembersFromFrame(frame)
+//       console.log(`Found ${newMembers.length} members, comparing with previous ${currentMembers.length} members`)
 
 //       // Compare with previous members to find new ones
-//       const addedMembers = findNewMembers(currentMembers, newMembers);
+//       const addedMembers = findNewMembers(currentMembers, newMembers)
 
 //       // If new members are found, process them
 //       if (addedMembers.length > 0) {
-//         console.log(`Found ${addedMembers.length} new members!`);
+//         console.log(`Found ${addedMembers.length} new members!`)
 //         // Send notifications for new members
-//         await processNewMembers(addedMembers);
+//         await processNewMembers(addedMembers)
 //       } else {
-//         console.log("No new members found");
+//         console.log("No new members found")
 //       }
 
 //       // Update the current members list
-//       currentMembers = newMembers;
+//       currentMembers = newMembers
+
+//       // Update heartbeat timestamp
+//       lastHeartbeat = new Date()
 //     } catch (error) {
-//       console.error("Error during monitoring check:", error);
+//       console.error("Error during monitoring check:", error)
 //       // Log error but continue monitoring
 //     }
-//   }, MONITORING_INTERVAL_MS); // Check every 30 seconds
+//   }, MONITORING_INTERVAL_MS) // Check every 30 seconds
 
-//   console.log(`Monitoring interval set up for every ${MONITORING_INTERVAL_MS / 1000} seconds`);
+//   // Set up heartbeat monitoring to detect if the bot stops working
+//   if (!heartbeatInterval) {
+//     let notificationSent = false
+
+//     heartbeatInterval = setInterval(async () => {
+//       const now = new Date()
+//       const timeSinceLastHeartbeat = now.getTime() - lastHeartbeat.getTime()
+
+//       if (timeSinceLastHeartbeat > HEARTBEAT_TIMEOUT_MS && !notificationSent) {
+//         console.error(`⚠️ Bot appears to be inactive for ${timeSinceLastHeartbeat / 1000} seconds!`)
+
+//         // Send notification that the bot is down - ONLY ONCE
+//         await sendEmail(
+//           "⚠️ ALERT: Availity Monitoring Bot is Down",
+//           `The Availity monitoring bot has not reported activity for ${Math.floor(timeSinceLastHeartbeat / 1000)} seconds.\n\n` +
+//             `Last activity was at ${lastHeartbeat.toLocaleString()}.\n\n` +
+//             `MANUAL INTERVENTION REQUIRED: Please restart the application to resume monitoring.\n\n` +
+//             `This is an automated message from the monitoring system.`,
+//         )
+
+//         // Mark notification as sent so we don't send it again
+//         notificationSent = true
+
+//         console.log("Down notification sent. Waiting for manual restart.")
+//       } else if (timeSinceLastHeartbeat <= HEARTBEAT_TIMEOUT_MS && notificationSent) {
+//         // If the bot is active again and we previously sent a notification
+//         notificationSent = false
+//         console.log("Bot appears to be active again. Resetting notification flag.")
+//       } else {
+//         console.log(`Heartbeat check: Bot active, last activity ${timeSinceLastHeartbeat / 1000} seconds ago`)
+//       }
+//     }, HEARTBEAT_INTERVAL_MS)
+//   }
+
+//   console.log(`Monitoring interval set up for every ${MONITORING_INTERVAL_MS / 1000} seconds`)
+//   console.log(`Heartbeat monitoring set up for every ${HEARTBEAT_INTERVAL_MS / 1000} seconds`)
 // }
 
 // // Helper function to find new members by comparing two arrays
@@ -1162,6 +1215,10 @@
 
 //       if (member.status) {
 //         emailContent += `Status: ${member.status}\n`
+//       }
+
+//       if (member.county) {
+//         emailContent += `County: ${member.county}\n`
 //       }
 
 //       if (member.requestDate) {
@@ -1287,6 +1344,9 @@
 
 //     // Update last check time
 //     lastCheckTime = currentTime
+
+//     // Update heartbeat timestamp
+//     lastHeartbeat = new Date()
 //   } catch (error) {
 //     console.error("Error checking for new referrals:", error)
 
@@ -1311,12 +1371,13 @@
 //   return match ? match[1] : ""
 // }
 
-// // Replace the startReferralMonitoring function with this improved version that runs every 30 seconds
-
 // // Function to start the monitoring process
 // export async function startReferralMonitoring(): Promise<void> {
 //   console.log("🚀 Starting referral monitoring process with 30-second interval...")
 //   console.log(`⏰ Current time: ${new Date().toISOString()}`)
+
+//   // Initialize heartbeat
+//   lastHeartbeat = new Date()
 
 //   // Track the number of checks for debugging
 //   let checkCount = 0
@@ -1357,6 +1418,9 @@
 //       const endTime = new Date()
 //       const duration = (endTime.getTime() - startTime.getTime()) / 1000
 //       console.log(`✅ Scheduled check #${checkCount} completed successfully in ${duration.toFixed(2)} seconds`)
+
+//       // Update heartbeat timestamp on successful check
+//       lastHeartbeat = new Date()
 //     } catch (error) {
 //       console.error(`❌ Error in scheduled API check #${checkCount}:`, error)
 
@@ -1367,6 +1431,9 @@
 //         await delay(5000)
 //         await checkForNewReferrals()
 //         console.log(`✅ Retry for check #${checkCount} successful`)
+
+//         // Update heartbeat timestamp on successful retry
+//         lastHeartbeat = new Date()
 //       } catch (retryError) {
 //         console.error(`❌ Scheduled check #${checkCount} retry failed:`, retryError)
 //         // Continue even if retry fails
@@ -1374,20 +1441,60 @@
 //     }
 
 //     // Log next scheduled check time
-//     const nextCheckTime = new Date(Date.now() + 30000)
+//     const nextCheckTime = new Date(Date.now() + MONITORING_INTERVAL_MS)
 //     console.log(`🔔 Next check (#${checkCount + 1}) scheduled for ${nextCheckTime.toISOString()}`)
 //   }
 
 //   // Use setInterval with the exact millisecond value (30000 ms = 30 seconds)
-//   const intervalId = setInterval(performScheduledCheck, 30000)
+//   const intervalId = setInterval(performScheduledCheck, MONITORING_INTERVAL_MS)
+
+//   // Set up heartbeat monitoring to detect if the bot stops working
+//   if (!heartbeatInterval) {
+//     let notificationSent = false
+
+//     heartbeatInterval = setInterval(async () => {
+//       const now = new Date()
+//       const timeSinceLastHeartbeat = now.getTime() - lastHeartbeat.getTime()
+
+//       if (timeSinceLastHeartbeat > HEARTBEAT_TIMEOUT_MS && !notificationSent) {
+//         console.error(`⚠️ Bot appears to be inactive for ${timeSinceLastHeartbeat / 1000} seconds!`)
+
+//         // Send notification that the bot is down - ONLY ONCE
+//         await sendEmail(
+//           "⚠️ ALERT: Availity Monitoring Bot is Down",
+//           `The Availity monitoring bot has not reported activity for ${Math.floor(timeSinceLastHeartbeat / 1000)} seconds.\n\n` +
+//             `Last activity was at ${lastHeartbeat.toLocaleString()}.\n\n` +
+//             `MANUAL INTERVENTION REQUIRED: Please restart the application to resume monitoring.\n\n` +
+//             `This is an automated message from the monitoring system.`,
+//         )
+
+//         // Mark notification as sent so we don't send it again
+//         notificationSent = true
+
+//         console.log("Down notification sent. Waiting for manual restart.")
+//       } else if (timeSinceLastHeartbeat <= HEARTBEAT_TIMEOUT_MS && notificationSent) {
+//         // If the bot is active again and we previously sent a notification
+//         notificationSent = false
+//         console.log("Bot appears to be active again. Resetting notification flag.")
+//       } else {
+//         console.log(`Heartbeat check: Bot active, last activity ${timeSinceLastHeartbeat / 1000} seconds ago`)
+//       }
+//     }, HEARTBEAT_INTERVAL_MS)
+//   }
 
 //   console.log(`🔔 Monitoring setup complete - checking every 30 seconds`)
-//   console.log(`⏰ Next check (#${checkCount + 1}) scheduled for ${new Date(Date.now() + 30000).toISOString()}`)
+//   console.log(
+//     `⏰ Next check (#${checkCount + 1}) scheduled for ${new Date(Date.now() + MONITORING_INTERVAL_MS).toISOString()}`,
+//   )
+//   console.log(`💓 Heartbeat monitoring active - checking every ${HEARTBEAT_INTERVAL_MS / 1000} seconds`)
 
 //   // Add a function to stop monitoring if needed
 //   process.on("SIGINT", () => {
 //     console.log("🛑 Stopping monitoring due to application shutdown...")
 //     clearInterval(intervalId)
+//     if (heartbeatInterval) {
+//       clearInterval(heartbeatInterval)
+//     }
 //     closeBrowser().then(() => {
 //       console.log("✅ Monitoring stopped and browser closed successfully")
 //       process.exit(0)
@@ -1402,8 +1509,16 @@
 //     monitoringInterval = null
 //     console.log("Referral monitoring stopped")
 //   }
+
+//   if (heartbeatInterval) {
+//     clearInterval(heartbeatInterval)
+//     heartbeatInterval = null
+//     console.log("Heartbeat monitoring stopped")
+//   }
+
 //   isMonitoring = false
 // }
+
 
 
 import puppeteer, { type Browser, type Page } from "puppeteer"
@@ -1426,8 +1541,7 @@ let isMonitoring = false
 let currentMembers: MemberData[] = []
 let lastHeartbeat = new Date()
 let heartbeatInterval: NodeJS.Timeout | null = null
-const restartAttempts = 0
-const MAX_RESTART_ATTEMPTS = 5
+let isLoggedIn = false // Track login state to prevent redundant logins
 
 // Constants
 const AVAILITY_URL = "https://apps.availity.com"
@@ -1502,15 +1616,21 @@ export async function closeBrowser(): Promise<void> {
     await browser.close()
     browser = null
     page = null
+    isLoggedIn = false // Reset login state when browser is closed
     console.log("Browser closed successfully")
   }
 }
 
 export async function setupBot(): Promise<void> {
   try {
+    // If browser is already set up, don't recreate it
+    if (browser && page) {
+      console.log("Browser already set up, skipping initialization")
+      return
+    }
+    
     browser = await puppeteer.launch({
       headless: true,
-      // headless: "new" as any,
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
@@ -1521,7 +1641,6 @@ export async function setupBot(): Promise<void> {
         "--single-process",
         "--disable-gpu",
       ],
-
       defaultViewport: { width: 1280, height: 800 },
       timeout: 30000,
     })
@@ -1541,12 +1660,19 @@ export async function setupBot(): Promise<void> {
     // Enable request interception to optimize performance
     await page.setRequestInterception(true)
     page.on("request", (request) => {
-      // Block unnecessary resources to speed up page loading
-      const resourceType = request.resourceType()
-      if (resourceType === "image" || resourceType === "font" || resourceType === "media") {
-        request.abort()
-      } else {
-        request.continue()
+      try {
+        // Block unnecessary resources to speed up page loading
+        const resourceType = request.resourceType()
+        if (resourceType === "image" || resourceType === "font" || resourceType === "media") {
+          request.abort()
+        } else {
+          request.continue()
+        }
+      } catch (error) {
+        // If request is already handled, ignore the error
+        if (!(error instanceof Error) || !error.message.includes("Request is already handled")) {
+          console.error("Error in request interception:", error)
+        }
       }
     })
 
@@ -1616,6 +1742,12 @@ export async function loginToAvaility(): Promise<boolean> {
   console.log("Starting Availity login process...")
 
   try {
+    // Check if we're already logged in to prevent redundant logins
+    if (isLoggedIn && browser && page) {
+      console.log("Already logged in, skipping login process")
+      return true
+    }
+
     if (!browser || !page) {
       console.log("Browser or page not initialized. Setting up bot...")
       await setupBot()
@@ -1649,7 +1781,7 @@ export async function loginToAvaility(): Promise<boolean> {
     }
 
     // Check if we're logged in by looking for dashboard elements
-    const isLoggedIn = await page.evaluate(() => {
+    const dashboardFound = await page.evaluate(() => {
       const dashboardElements =
         document.querySelector(".top-applications") !== null ||
         document.querySelector(".av-dashboard") !== null ||
@@ -1676,7 +1808,7 @@ export async function loginToAvaility(): Promise<boolean> {
     if (is2FARequired) {
       console.log("2FA authentication is required. Handling 2FA...")
       await handle2FA(page)
-    } else if (isLoggedIn) {
+    } else if (dashboardFound) {
       console.log("Already logged in - no 2FA required")
     } else {
       const currentUrl = page.url()
@@ -1697,10 +1829,14 @@ export async function loginToAvaility(): Promise<boolean> {
     console.log("Proceeding to navigate to Care Central...")
     await navigateToCareCentral(page)
 
+    // Set login state to true after successful login and navigation
+    isLoggedIn = true
+    
     console.log("Login process completed successfully")
     return true
   } catch (error) {
     console.error("Error during login attempt:", error)
+    isLoggedIn = false
     throw error
   }
 }
@@ -1864,7 +2000,7 @@ async function handle2FA(page: Page): Promise<void> {
       // Navigation timeout after 2FA, but this might be expected
     }
 
-    const isLoggedIn = await page.evaluate(() => {
+    const dashboardFound = await page.evaluate(() => {
       const dashboardElements =
         document.querySelector(".top-applications") !== null ||
         document.querySelector(".av-dashboard") !== null ||
@@ -1877,7 +2013,7 @@ async function handle2FA(page: Page): Promise<void> {
       return dashboardElements || cookieConsent
     })
 
-    if (!isLoggedIn) {
+    if (!dashboardFound) {
       throw new Error("2FA verification failed - no dashboard elements found")
     }
 
@@ -1959,154 +2095,182 @@ async function handleCookieConsent(page: Page): Promise<void> {
 async function navigateToCareCentral(page: Page): Promise<void> {
   console.log("Navigating to Care Central...")
   try {
+    // Check if we're already on the Care Central page
+    const currentUrl = page.url()
+    if (currentUrl.includes("care-central")) {
+      console.log("Already on Care Central page, skipping navigation")
+      
+      // Get all frames and find the one with name="newBody"
+      const frames = page.frames()
+      const newBodyFrame = frames.find((frame) => frame.name() === "newBody")
+      
+      if (newBodyFrame) {
+        console.log("Found newBody iframe, proceeding to extract member information")
+        await extractMemberInformation(newBodyFrame)
+        return
+      }
+    }
+    
     // Wait for the dashboard to load
     await page.waitForSelector("body", { timeout: 30000, visible: true })
 
     // Wait for a bit to ensure the page is fully loaded
     await delay(1000)
 
-    // Look for "My Top Applications" heading first
-    const myTopAppsHeadingSelectors = [
-      'h1:has-text("My Top Applications")',
-      'h2:has-text("My Top Applications")',
-      'h3:has-text("My Top Applications")',
-      'h4:has-text("My Top Applications")',
-      'div:has-text("My Top Applications")',
-      'span:has-text("My Top Applications")',
-    ]
+    // Try direct navigation to Care Central URL first
+    try {
+      console.log("Attempting direct navigation to Care Central URL...")
+      await page.goto("https://apps.availity.com/public/apps/care-central/", { 
+        waitUntil: "networkidle2", 
+        timeout: 30000 
+      })
+      console.log("Direct navigation to Care Central completed")
+    } catch (directNavError) {
+      console.log("Direct navigation failed, falling back to UI navigation:", directNavError)
+      
+      // Look for "My Top Applications" heading first
+      const myTopAppsHeadingSelectors = [
+        'h1:has-text("My Top Applications")',
+        'h2:has-text("My Top Applications")',
+        'h3:has-text("My Top Applications")',
+        'h4:has-text("My Top Applications")',
+        'div:has-text("My Top Applications")',
+        'span:has-text("My Top Applications")',
+      ]
 
-    let myTopAppsHeading = null
-    for (const selector of myTopAppsHeadingSelectors) {
-      try {
-        myTopAppsHeading = await page.$(selector)
-        if (myTopAppsHeading) {
-          break
-        }
-      } catch (error) {
-        // Try next selector
-      }
-    }
-
-    // Now try to find Care Central by searching for all elements containing that text
-    const careCentralElements = await page.evaluate(() => {
-      const allElements = Array.from(document.querySelectorAll("*"))
-      return allElements
-        .filter((el) => {
-          const text = el.textContent || ""
-          return text.includes("Care Central") && !text.includes("Care Central.")
-        })
-        .map((el) => {
-          const rect = el.getBoundingClientRect()
-          return {
-            x: rect.x + rect.width / 2,
-            y: rect.y + rect.height / 2,
-            width: rect.width,
-            height: rect.height,
-            text: el.textContent,
-            tagName: el.tagName,
-            className: el.className,
-            id: el.id,
-          }
-        })
-    })
-
-    // Try to click the most likely element (filter for reasonable size and position)
-    let clicked = false
-    for (const element of careCentralElements) {
-      // Look for elements that are likely to be clickable tiles (reasonable size)
-      if (element.width > 50 && element.height > 50) {
+      let myTopAppsHeading = null
+      for (const selector of myTopAppsHeadingSelectors) {
         try {
-          await page.mouse.click(element.x, element.y)
-          clicked = true
-
-          // Wait a bit to see if navigation happens
-          await delay(2000)
-
-          // Check if we've navigated away from the dashboard
-          const currentUrl = page.url()
-
-          if (currentUrl.includes("care-central") || !currentUrl.includes("dashboard")) {
+          myTopAppsHeading = await page.$(selector)
+          if (myTopAppsHeading) {
             break
-          } else {
-            clicked = false
           }
         } catch (error) {
-          // Try next element
+          // Try next selector
         }
       }
-    }
 
-    // If we still haven't clicked successfully, try a different approach
-    if (!clicked) {
-      // Try to find the Wellpoint image
-      const wellpointImages = await page.evaluate(() => {
-        const images = Array.from(document.querySelectorAll("img"))
-        return images
-          .filter((img) => {
-            const src = img.src || ""
-            const alt = img.alt || ""
-            return (
-              src.includes("wellpoint") ||
-              alt.includes("Wellpoint") ||
-              src.includes("Wellpoint") ||
-              alt.includes("wellpoint")
-            )
+      // Now try to find Care Central by searching for all elements containing that text
+      const careCentralElements = await page.evaluate(() => {
+        const allElements = Array.from(document.querySelectorAll("*"))
+        return allElements
+          .filter((el) => {
+            const text = el.textContent || ""
+            return text.includes("Care Central") && !text.includes("Care Central.")
           })
-          .map((img) => {
-            const rect = img.getBoundingClientRect()
+          .map((el) => {
+            const rect = el.getBoundingClientRect()
             return {
               x: rect.x + rect.width / 2,
               y: rect.y + rect.height / 2,
               width: rect.width,
               height: rect.height,
-              src: img.src,
-              alt: img.alt,
+              text: el.textContent,
+              tagName: el.tagName,
+              className: el.className,
+              id: el.id,
             }
           })
       })
 
-      // Try clicking on a Wellpoint image
-      for (const img of wellpointImages) {
-        try {
-          await page.mouse.click(img.x, img.y)
-          clicked = true
-          await delay(2000)
-          break
-        } catch (error) {
-          // Try next image
-        }
-      }
-    }
-
-    // Last resort - try clicking at fixed coordinates where Care Central is likely to be
-    if (!clicked) {
-      // Try a few different positions where Care Central might be
-      const potentialPositions = [
-        { x: 240, y: 400 },
-        { x: 240, y: 430 },
-        { x: 270, y: 400 },
-        { x: 200, y: 400 },
-      ]
-
-      for (const pos of potentialPositions) {
-        try {
-          await page.mouse.click(pos.x, pos.y)
-          await delay(2000)
-
-          // Check if we've navigated away
-          const currentUrl = page.url()
-          if (currentUrl.includes("care-central") || !currentUrl.includes("dashboard")) {
+      // Try to click the most likely element (filter for reasonable size and position)
+      let clicked = false
+      for (const element of careCentralElements) {
+        // Look for elements that are likely to be clickable tiles (reasonable size)
+        if (element.width > 50 && element.height > 50) {
+          try {
+            await page.mouse.click(element.x, element.y)
             clicked = true
-            break
+
+            // Wait a bit to see if navigation happens
+            await delay(2000)
+
+            // Check if we've navigated away from the dashboard
+            const currentUrl = page.url()
+
+            if (currentUrl.includes("care-central") || !currentUrl.includes("dashboard")) {
+              break
+            } else {
+              clicked = false
+            }
+          } catch (error) {
+            // Try next element
           }
-        } catch (error) {
-          // Try next position
         }
       }
-    }
 
-    if (!clicked) {
-      throw new Error("Failed to click on Care Central after trying multiple approaches")
+      // If we still haven't clicked successfully, try a different approach
+      if (!clicked) {
+        // Try to find the Wellpoint image
+        const wellpointImages = await page.evaluate(() => {
+          const images = Array.from(document.querySelectorAll("img"))
+          return images
+            .filter((img) => {
+              const src = img.src || ""
+              const alt = img.alt || ""
+              return (
+                src.includes("wellpoint") ||
+                alt.includes("Wellpoint") ||
+                src.includes("Wellpoint") ||
+                alt.includes("wellpoint")
+              )
+            })
+            .map((img) => {
+              const rect = img.getBoundingClientRect()
+              return {
+                x: rect.x + rect.width / 2,
+                y: rect.y + rect.height / 2,
+                width: rect.width,
+                height: rect.height,
+                src: img.src,
+                alt: img.alt,
+              }
+            })
+        })
+
+        // Try clicking on a Wellpoint image
+        for (const img of wellpointImages) {
+          try {
+            await page.mouse.click(img.x, img.y)
+            clicked = true
+            await delay(2000)
+            break
+          } catch (error) {
+            // Try next image
+          }
+        }
+      }
+
+      // Last resort - try clicking at fixed coordinates where Care Central is likely to be
+      if (!clicked) {
+        // Try a few different positions where Care Central might be
+        const potentialPositions = [
+          { x: 240, y: 400 },
+          { x: 240, y: 430 },
+          { x: 270, y: 400 },
+          { x: 200, y: 400 },
+        ]
+
+        for (const pos of potentialPositions) {
+          try {
+            await page.mouse.click(pos.x, pos.y)
+            await delay(2000)
+
+            // Check if we've navigated away
+            const currentUrl = page.url()
+            if (currentUrl.includes("care-central") || !currentUrl.includes("dashboard")) {
+              clicked = true
+              break
+            }
+          } catch (error) {
+            // Try next position
+          }
+        }
+      }
+
+      if (!clicked) {
+        throw new Error("Failed to click on Care Central after trying multiple approaches")
+      }
     }
 
     // Wait for the iframe to load
@@ -2654,10 +2818,15 @@ async function processNewMembers(members: MemberData[]): Promise<void> {
 export async function checkForNewReferrals(): Promise<void> {
   console.log("Starting API-based check for new referrals...")
   try {
-    // Ensure we're logged in
-    const isLoggedIn = await loginToAvaility()
-    if (!isLoggedIn) {
-      throw new Error("Failed to login to Availity")
+    // Check if we're already logged in
+    if (!isLoggedIn || !browser || !page) {
+      console.log("Not logged in or browser not initialized, logging in...")
+      const loginSuccess = await loginToAvaility()
+      if (!loginSuccess) {
+        throw new Error("Failed to login to Availity")
+      }
+    } else {
+      console.log("Already logged in, proceeding with API check")
     }
 
     // Get session cookies
@@ -2763,6 +2932,8 @@ export async function checkForNewReferrals(): Promise<void> {
       const axiosError = error as AxiosError
       if (axiosError.response && (axiosError.response.status === 401 || axiosError.response.status === 403)) {
         // Clear browser session and try again
+        console.log("Authentication error detected, resetting session...")
+        isLoggedIn = false
         await closeBrowser()
         browser = null
         page = null
@@ -2926,4 +3097,3 @@ export function stopReferralMonitoring(): void {
 
   isMonitoring = false
 }
-
