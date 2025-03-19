@@ -1541,14 +1541,13 @@ let isMonitoring = false
 let currentMembers: MemberData[] = []
 let lastHeartbeat = new Date()
 let heartbeatInterval: NodeJS.Timeout | null = null
-let isLoggedIn = false
-let isNavigatedToReferrals = false
-let currentFrame: any = null
+let isLoggedIn = false // Track login state
+let currentFrame: any = null // Store the current frame for monitoring
+let pendingRequests = new Set<string>() // Track pending requests to prevent duplicates
 
 // Constants
 const AVAILITY_URL = "https://apps.availity.com"
 const LOGIN_URL = "https://apps.availity.com/availity/web/public.elegant.login"
-const CARE_CENTRAL_URL = "https://apps.availity.com/public/apps/care-central/"
 const REFERRALS_API_URL = "https://apps.availity.com/api/v1/proxy/anthem/provconn/v1/carecentral/ltss/referral/details"
 const TOTP_SECRET = process.env.TOTP_SECRET || "RU4SZCAW4UESMUQNCG3MXTWKXA"
 const MONITORING_INTERVAL_MS = 30000 // 30 seconds
@@ -1582,12 +1581,12 @@ interface MemberData {
   additionalInfo?: string
 }
 
-// Helper function for timeouts
+// Helper function for timeouts - reduced delay times
 async function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-// Retry operation helper
+// Retry operation helper - reduced delay time
 async function retryOperation(operation: () => Promise<void>, retries = 3, delayMs = 1000) {
   for (let i = 0; i < retries; i++) {
     try {
@@ -1621,14 +1620,13 @@ export async function closeBrowser(): Promise<void> {
     page = null
     currentFrame = null
     isLoggedIn = false
-    isNavigatedToReferrals = false
     console.log("Browser closed successfully")
   }
 }
 
 export async function setupBot(): Promise<void> {
   try {
-    // Close any existing browser instance first
+    // Close any existing browser instance first to prevent duplicates
     await closeBrowser()
     
     browser = await puppeteer.launch({
@@ -1644,7 +1642,7 @@ export async function setupBot(): Promise<void> {
         "--disable-gpu",
       ],
       defaultViewport: { width: 1280, height: 800 },
-      timeout: 60000, // Increased timeout
+      timeout: 30000,
     })
 
     console.log("✅ Browser launched successfully")
@@ -1656,40 +1654,49 @@ export async function setupBot(): Promise<void> {
     await page.setViewport({ width: 1280, height: 800 })
 
     // Add additional configurations
-    await page.setDefaultNavigationTimeout(60000) // Increased timeout
-    await page.setDefaultTimeout(60000) // Increased timeout
+    await page.setDefaultNavigationTimeout(30000)
+    await page.setDefaultTimeout(30000)
+
+    // Clear pending requests set
+    pendingRequests.clear()
 
     // Enable request interception to optimize performance
     await page.setRequestInterception(true)
-    
-    // Use a Set to track requests that are already being handled
-    const pendingRequests = new Set<string>()
-    
     page.on("request", (request) => {
-      const url = request.url()
-      
-      // Check if this request is already being handled
-      if (pendingRequests.has(url)) {
-        console.log(`Aborting duplicate request to: ${url}`)
-        request.abort()
-        return
+      try {
+        // Get the request URL
+        const url = request.url()
+        
+        // Check if this request is already being handled
+        if (pendingRequests.has(url)) {
+          console.log(`Aborting duplicate request to: ${url}`)
+          request.abort()
+          return
+        }
+        
+        // Add this request to the pending set
+        pendingRequests.add(url)
+        
+        // Block unnecessary resources to speed up page loading
+        const resourceType = request.resourceType()
+        if (resourceType === "image" || resourceType === "font" || resourceType === "media") {
+          request.abort()
+        } else {
+          request.continue()
+        }
+        
+        // Remove from pending set after a short delay
+        setTimeout(() => {
+          pendingRequests.delete(url)
+        }, 5000)
+      } catch (error) {
+        // If there's an error, try to continue the request
+        try {
+          request.continue()
+        } catch (continueError) {
+          console.error("Error continuing request:", continueError)
+        }
       }
-      
-      // Add this request to the pending set
-      pendingRequests.add(url)
-      
-      // Block unnecessary resources to speed up page loading
-      const resourceType = request.resourceType()
-      if (resourceType === "image" || resourceType === "font" || resourceType === "media") {
-        request.abort()
-      } else {
-        request.continue()
-      }
-      
-      // Remove from pending set after a short delay
-      setTimeout(() => {
-        pendingRequests.delete(url)
-      }, 5000)
     })
 
     console.log("✅ Bot setup completed")
@@ -1758,17 +1765,12 @@ export async function loginToAvaility(): Promise<boolean> {
   console.log("Starting Availity login process...")
 
   try {
-    // If we're already logged in and on the referrals page, don't log in again
-    if (isLoggedIn && isNavigatedToReferrals && currentFrame) {
+    // Check if we're already logged in and have a valid frame for monitoring
+    if (isLoggedIn && currentFrame) {
       console.log("Already logged in and on referrals page, skipping login process")
       return true
     }
     
-    // Reset state
-    isLoggedIn = false
-    isNavigatedToReferrals = false
-    currentFrame = null
-
     if (!browser || !page) {
       console.log("Browser or page not initialized. Setting up bot...")
       await setupBot()
@@ -1780,22 +1782,6 @@ export async function loginToAvaility(): Promise<boolean> {
 
     console.log("Navigating to Availity login page...")
     await page.goto(LOGIN_URL, { waitUntil: "networkidle2" })
-
-    // Check if we're already logged in
-    const currentUrl = page.url()
-    if (!currentUrl.includes("login") && !currentUrl.includes("authenticate")) {
-      console.log("Already logged in based on URL check")
-      isLoggedIn = true
-      
-      // Handle any popups that might appear
-      await handlePopups(page)
-      
-      // Navigate to Care Central
-      console.log("Proceeding to navigate to Care Central...")
-      await navigateToCareCentral(page)
-      
-      return true
-    }
 
     // Enter username and password
     console.log("Entering credentials...")
@@ -1818,7 +1804,7 @@ export async function loginToAvaility(): Promise<boolean> {
     }
 
     // Check if we're logged in by looking for dashboard elements
-    const isLoggedInCheck = await page.evaluate(() => {
+    const loginCheck = await page.evaluate(() => {
       const dashboardElements =
         document.querySelector(".top-applications") !== null ||
         document.querySelector(".av-dashboard") !== null ||
@@ -1846,7 +1832,7 @@ export async function loginToAvaility(): Promise<boolean> {
       console.log("2FA authentication is required. Handling 2FA...")
       await handle2FA(page)
       isLoggedIn = true
-    } else if (isLoggedInCheck) {
+    } else if (loginCheck) {
       console.log("Already logged in - no 2FA required")
       isLoggedIn = true
     } else {
@@ -1855,10 +1841,6 @@ export async function loginToAvaility(): Promise<boolean> {
 
       if (currentUrl.includes("login") || currentUrl.includes("authenticate")) {
         throw new Error("Login failed - still on login page")
-      } else {
-        // Assume we're logged in if we're not on the login page
-        console.log("Assuming logged in based on URL not being login page")
-        isLoggedIn = true
       }
     }
 
@@ -1877,7 +1859,6 @@ export async function loginToAvaility(): Promise<boolean> {
   } catch (error) {
     console.error("Error during login attempt:", error)
     isLoggedIn = false
-    isNavigatedToReferrals = false
     currentFrame = null
     throw error
   }
@@ -2042,7 +2023,7 @@ async function handle2FA(page: Page): Promise<void> {
       // Navigation timeout after 2FA, but this might be expected
     }
 
-    const isLoggedInCheck = await page.evaluate(() => {
+    const isLoggedIn = await page.evaluate(() => {
       const dashboardElements =
         document.querySelector(".top-applications") !== null ||
         document.querySelector(".av-dashboard") !== null ||
@@ -2055,7 +2036,7 @@ async function handle2FA(page: Page): Promise<void> {
       return dashboardElements || cookieConsent
     })
 
-    if (!isLoggedInCheck) {
+    if (!isLoggedIn) {
       throw new Error("2FA verification failed - no dashboard elements found")
     }
 
@@ -2135,160 +2116,156 @@ async function handleCookieConsent(page: Page): Promise<void> {
 }
 
 async function navigateToCareCentral(page: Page): Promise<void> {
-  // If we're already on the referrals page, don't navigate again
-  if (isNavigatedToReferrals && currentFrame) {
-    console.log("Already on referrals page, skipping navigation")
-    return
-  }
-
   console.log("Navigating to Care Central...")
   try {
-    // Try direct navigation to Care Central first
-    console.log("Attempting direct navigation to Care Central URL...")
-    try {
-      await page.goto(CARE_CENTRAL_URL, { waitUntil: "networkidle2", timeout: 30000 })
-      console.log("Direct navigation to Care Central completed")
-      
-      // Check if we're on the right page
-      const currentUrl = page.url()
-      console.log(`Current URL after direct navigation: ${currentUrl}`)
-      
-      if (currentUrl.includes("care-central")) {
-        console.log("Successfully navigated directly to Care Central")
-      } else {
-        console.log("Direct navigation did not reach Care Central, falling back to original approach")
-        throw new Error("Direct navigation did not reach Care Central")
+    // Wait for the dashboard to load
+    await page.waitForSelector("body", { timeout: 30000, visible: true })
+
+    // Wait for a bit to ensure the page is fully loaded
+    await delay(1000)
+
+    // Look for "My Top Applications" heading first
+    const myTopAppsHeadingSelectors = [
+      'h1:has-text("My Top Applications")',
+      'h2:has-text("My Top Applications")',
+      'h3:has-text("My Top Applications")',
+      'h4:has-text("My Top Applications")',
+      'div:has-text("My Top Applications")',
+      'span:has-text("My Top Applications")',
+    ]
+
+    let myTopAppsHeading = null
+    for (const selector of myTopAppsHeadingSelectors) {
+      try {
+        myTopAppsHeading = await page.$(selector)
+        if (myTopAppsHeading) {
+          break
+        }
+      } catch (error) {
+        // Try next selector
       }
-    } catch (directNavError) {
-      console.log("Direct navigation failed, falling back to original approach:", directNavError)
-      
-      // Wait for the dashboard to load
-      await page.waitForSelector("body", { timeout: 30000, visible: true })
+    }
 
-      // Wait for a bit to ensure the page is fully loaded
-      await delay(1000)
+    // Now try to find Care Central by searching for all elements containing that text
+    const careCentralElements = await page.evaluate(() => {
+      const allElements = Array.from(document.querySelectorAll("*"))
+      return allElements
+        .filter((el) => {
+          const text = el.textContent || ""
+          return text.includes("Care Central") && !text.includes("Care Central.")
+        })
+        .map((el) => {
+          const rect = el.getBoundingClientRect()
+          return {
+            x: rect.x + rect.width / 2,
+            y: rect.y + rect.height / 2,
+            width: rect.width,
+            height: rect.height,
+            text: el.textContent,
+            tagName: el.tagName,
+            className: el.className,
+            id: el.id,
+          }
+        })
+    })
 
-      // Now try to find Care Central by searching for all elements containing that text
-      const careCentralElements = await page.evaluate(() => {
-        const allElements = Array.from(document.querySelectorAll("*"))
-        return allElements
-          .filter((el) => {
-            const text = el.textContent || ""
-            return text.includes("Care Central") && !text.includes("Care Central.")
+    // Try to click the most likely element (filter for reasonable size and position)
+    let clicked = false
+    for (const element of careCentralElements) {
+      // Look for elements that are likely to be clickable tiles (reasonable size)
+      if (element.width > 50 && element.height > 50) {
+        try {
+          await page.mouse.click(element.x, element.y)
+          clicked = true
+
+          // Wait a bit to see if navigation happens
+          await delay(2000)
+
+          // Check if we've navigated away from the dashboard
+          const currentUrl = page.url()
+
+          if (currentUrl.includes("care-central") || !currentUrl.includes("dashboard")) {
+            break
+          } else {
+            clicked = false
+          }
+        } catch (error) {
+          // Try next element
+        }
+      }
+    }
+
+    // If we still haven't clicked successfully, try a different approach
+    if (!clicked) {
+      // Try to find the Wellpoint image
+      const wellpointImages = await page.evaluate(() => {
+        const images = Array.from(document.querySelectorAll("img"))
+        return images
+          .filter((img) => {
+            const src = img.src || ""
+            const alt = img.alt || ""
+            return (
+              src.includes("wellpoint") ||
+              alt.includes("Wellpoint") ||
+              src.includes("Wellpoint") ||
+              alt.includes("wellpoint")
+            )
           })
-          .map((el) => {
-            const rect = el.getBoundingClientRect()
+          .map((img) => {
+            const rect = img.getBoundingClientRect()
             return {
               x: rect.x + rect.width / 2,
               y: rect.y + rect.height / 2,
               width: rect.width,
               height: rect.height,
-              text: el.textContent,
-              tagName: el.tagName,
-              className: el.className,
-              id: el.id,
+              src: img.src,
+              alt: img.alt,
             }
           })
       })
 
-      // Try to click the most likely element (filter for reasonable size and position)
-      let clicked = false
-      for (const element of careCentralElements) {
-        // Look for elements that are likely to be clickable tiles (reasonable size)
-        if (element.width > 50 && element.height > 50) {
-          try {
-            await page.mouse.click(element.x, element.y)
-            clicked = true
-
-            // Wait a bit to see if navigation happens
-            await delay(2000)
-
-            // Check if we've navigated away from the dashboard
-            const currentUrl = page.url()
-
-            if (currentUrl.includes("care-central") || !currentUrl.includes("dashboard")) {
-              break
-            } else {
-              clicked = false
-            }
-          } catch (error) {
-            // Try next element
-          }
+      // Try clicking on a Wellpoint image
+      for (const img of wellpointImages) {
+        try {
+          await page.mouse.click(img.x, img.y)
+          clicked = true
+          await delay(2000)
+          break
+        } catch (error) {
+          // Try next image
         }
       }
+    }
 
-      // If we still haven't clicked successfully, try a different approach
-      if (!clicked) {
-        // Try to find the Wellpoint image
-        const wellpointImages = await page.evaluate(() => {
-          const images = Array.from(document.querySelectorAll("img"))
-          return images
-            .filter((img) => {
-              const src = img.src || ""
-              const alt = img.alt || ""
-              return (
-                src.includes("wellpoint") ||
-                alt.includes("Wellpoint") ||
-                src.includes("Wellpoint") ||
-                alt.includes("wellpoint")
-              )
-            })
-            .map((img) => {
-              const rect = img.getBoundingClientRect()
-              return {
-                x: rect.x + rect.width / 2,
-                y: rect.y + rect.height / 2,
-                width: rect.width,
-                height: rect.height,
-                src: img.src,
-                alt: img.alt,
-              }
-            })
-        })
+    // Last resort - try clicking at fixed coordinates where Care Central is likely to be
+    if (!clicked) {
+      // Try a few different positions where Care Central might be
+      const potentialPositions = [
+        { x: 240, y: 400 },
+        { x: 240, y: 430 },
+        { x: 270, y: 400 },
+        { x: 200, y: 400 },
+      ]
 
-        // Try clicking on a Wellpoint image
-        for (const img of wellpointImages) {
-          try {
-            await page.mouse.click(img.x, img.y)
+      for (const pos of potentialPositions) {
+        try {
+          await page.mouse.click(pos.x, pos.y)
+          await delay(2000)
+
+          // Check if we've navigated away
+          const currentUrl = page.url()
+          if (currentUrl.includes("care-central") || !currentUrl.includes("dashboard")) {
             clicked = true
-            await delay(2000)
             break
-          } catch (error) {
-            // Try next image
           }
+        } catch (error) {
+          // Try next position
         }
       }
+    }
 
-      // Last resort - try clicking at fixed coordinates where Care Central is likely to be
-      if (!clicked) {
-        // Try a few different positions where Care Central might be
-        const potentialPositions = [
-          { x: 240, y: 400 },
-          { x: 240, y: 430 },
-          { x: 270, y: 400 },
-          { x: 200, y: 400 },
-        ]
-
-        for (const pos of potentialPositions) {
-          try {
-            await page.mouse.click(pos.x, pos.y)
-            await delay(2000)
-
-            // Check if we've navigated away
-            const currentUrl = page.url()
-            if (currentUrl.includes("care-central") || !currentUrl.includes("dashboard")) {
-              clicked = true
-              break
-            }
-          } catch (error) {
-            // Try next position
-          }
-        }
-      }
-
-      if (!clicked) {
-        throw new Error("Failed to click on Care Central after trying multiple approaches")
-      }
+    if (!clicked) {
+      throw new Error("Failed to click on Care Central after trying multiple approaches")
     }
 
     // Wait for the iframe to load
@@ -2432,17 +2409,13 @@ async function navigateToCareCentral(page: Page): Promise<void> {
       await delay(2000)
     }
 
-    // Store the current frame for future use
+    // Store the current frame for future monitoring
     currentFrame = updatedFrames.find((frame) => frame.name() === "newBody")
-    
-    // Mark that we've successfully navigated to the referrals page
-    isNavigatedToReferrals = true
 
     // Now extract member information from the referrals page
     await extractMemberInformation(currentFrame)
   } catch (error) {
     console.error("Error navigating to Care Central:", error)
-    isNavigatedToReferrals = false
     currentFrame = null
     throw error
   }
@@ -2717,14 +2690,6 @@ async function startContinuousMonitoring(frame: any): Promise<void> {
   monitoringInterval = setInterval(async () => {
     try {
       console.log("Checking for new referrals...")
-      
-      // Make sure we're still on the referrals page
-      if (!isNavigatedToReferrals || !currentFrame) {
-        console.log("Not on referrals page, attempting to navigate back...")
-        await loginToAvaility()
-        return
-      }
-      
       // Extract the current members from the frame
       const newMembers = await extractMembersFromFrame(frame)
       console.log(`Found ${newMembers.length} members, comparing with previous ${currentMembers.length} members`)
@@ -2749,14 +2714,6 @@ async function startContinuousMonitoring(frame: any): Promise<void> {
     } catch (error) {
       console.error("Error during monitoring check:", error)
       // Log error but continue monitoring
-      
-      // If there's an error, try to recover by logging in again
-      try {
-        console.log("Attempting to recover from error by logging in again...")
-        await loginToAvaility()
-      } catch (loginError) {
-        console.error("Failed to recover from error:", loginError)
-      }
     }
   }, MONITORING_INTERVAL_MS) // Check every 30 seconds
 
@@ -2860,10 +2817,12 @@ async function processNewMembers(members: MemberData[]): Promise<void> {
 export async function checkForNewReferrals(): Promise<void> {
   console.log("Starting API-based check for new referrals...")
   try {
-    // Ensure we're logged in
-    const isLoggedIn = await loginToAvaility()
-    if (!isLoggedIn) {
-      throw new Error("Failed to login to Availity")
+    // If we're already logged in and have a valid frame, use that instead of logging in again
+    if (!isLoggedIn || !currentFrame) {
+      console.log("Not logged in or no current frame, logging in...")
+      await loginToAvaility()
+    } else {
+      console.log("Already logged in and have a valid frame, skipping login")
     }
 
     // Get session cookies
@@ -2973,7 +2932,6 @@ export async function checkForNewReferrals(): Promise<void> {
         browser = null
         page = null
         isLoggedIn = false
-        isNavigatedToReferrals = false
         currentFrame = null
         throw error // Let the caller handle the retry
       }
@@ -3120,27 +3078,18 @@ export async function startReferralMonitoring(): Promise<void> {
 }
 
 // Stop monitoring when needed
-export function stopReferralMonitoring(): Promise<void> {
-  return new Promise(async (resolve) => {
-    if (monitoringInterval) {
-      clearInterval(monitoringInterval)
-      monitoringInterval = null
-      console.log("Referral monitoring stopped")
-    }
+export function stopReferralMonitoring(): void {
+  if (monitoringInterval) {
+    clearInterval(monitoringInterval)
+    monitoringInterval = null
+    console.log("Referral monitoring stopped")
+  }
 
-    if (heartbeatInterval) {
-      clearInterval(heartbeatInterval)
-      heartbeatInterval = null
-      console.log("Heartbeat monitoring stopped")
-    }
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval)
+    heartbeatInterval = null
+    console.log("Heartbeat monitoring stopped")
+  }
 
-    isMonitoring = false
-    isLoggedIn = false
-    isNavigatedToReferrals = false
-    
-    // Close the browser
-    await closeBrowser()
-    
-    resolve()
-  })
+  isMonitoring = false
 }
