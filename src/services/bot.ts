@@ -1521,7 +1521,6 @@
 
 
 
-
 import puppeteer, { type Browser, type Page } from "puppeteer"
 import axios, { type AxiosError } from "axios"
 import { authenticator } from "otplib"
@@ -1544,6 +1543,7 @@ let lastHeartbeat = new Date()
 let heartbeatInterval: NodeJS.Timeout | null = null
 let isLoggedIn = false // Track login state
 let currentFrame: any = null // Store the current frame for monitoring
+const pendingRequests = new Set<string>() // Track pending requests to prevent duplicates
 const restartAttempts = 0
 const MAX_RESTART_ATTEMPTS = 5
 
@@ -1640,9 +1640,6 @@ export async function setupBot(): Promise<void> {
     // Add additional configurations
     await page.setDefaultNavigationTimeout(30000)
     await page.setDefaultTimeout(30000)
-
-    // Create a Set to track pending requests
-    const pendingRequests = new Set<string>()
 
     // Enable request interception to optimize performance
     await page.setRequestInterception(true)
@@ -2846,137 +2843,6 @@ async function processNewMembers(members: MemberData[]): Promise<void> {
   }
 }
 
-// Function to check for new referrals using API - this is now replaced by the tab-clicking approach
-export async function checkForNewReferrals(): Promise<void> {
-  console.log("Starting API-based check for new referrals...")
-  try {
-    // Ensure we're logged in
-    const isLoggedIn = await loginToAvaility()
-    if (!isLoggedIn) {
-      throw new Error("Failed to login to Availity")
-    }
-
-    // Get session cookies
-    const cookies = await getSessionCookies()
-
-    // Extract XSRF token
-    const xsrfToken = extractXsrfToken(cookies)
-
-    // Make API request to fetch referrals
-    console.log("Making API request to fetch referrals...")
-    const response = await axios.post<ReferralResponse>(
-      REFERRALS_API_URL,
-      {
-        brand: "WLP",
-        npi: "1184328189",
-        papi: "",
-        state: "TN",
-        tabStatus: "INCOMING",
-        taxId: "922753606",
-      },
-      {
-        headers: {
-          Cookie: cookies,
-          "Content-Type": "application/json",
-          "X-XSRF-TOKEN": xsrfToken,
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
-          Referer: "https://apps.availity.com/public/apps/care-central/",
-        },
-      },
-    )
-
-    const currentTime = new Date()
-    console.log(`Retrieved ${response.data.referrals.length} referrals from API`)
-
-    const newReferrals = response.data.referrals.filter((referral) => {
-      const requestDate = new Date(referral.requestOn)
-      return requestDate > lastCheckTime
-    })
-
-    console.log(`Found ${newReferrals.length} new referrals since last check`)
-
-    if (newReferrals.length > 0) {
-      // Process each new referral
-      for (const referral of newReferrals) {
-        // Check if referral already exists in database
-        const existingReferral = await Referral.findOne({
-          memberID: referral.memberID,
-          requestOn: referral.requestOn,
-        })
-
-        if (!existingReferral) {
-          // Save the new referral
-          const savedReferral = await Referral.create({
-            ...referral,
-            isNotified: false,
-          })
-
-          // Create notification
-          const notification = await Notification.create({
-            referralId: savedReferral._id,
-            memberName: referral.memberName,
-            memberID: referral.memberID,
-            message: `New referral for ${referral.memberName} (${referral.serviceName}) received on ${referral.requestOn}`,
-          })
-
-          // Send email notification
-          await sendEmail(
-            "New Referral Notification",
-            `New referral received for ${referral.memberName} (ID: ${referral.memberID}).\n\n` +
-              `Service: ${referral.serviceName}\n` +
-              `Region: ${referral.regionName}\n` +
-              `County: ${referral.county}\n` +
-              `Plan: ${referral.plan}\n` +
-              `Preferred Start Date: ${referral.preferredStartDate}\n` +
-              `Status: ${referral.status}`,
-          )
-
-          // Send SMS notification
-          await sendSMS(
-            `New referral: ${referral.memberName} (${referral.memberID}) for ${referral.serviceName}. Check dashboard for details.`,
-          )
-
-          // Mark as notified
-          savedReferral.isNotified = true
-          await savedReferral.save()
-        }
-      }
-    } else {
-      console.log("No new referrals found in this check")
-    }
-
-    // Update last check time
-    lastCheckTime = currentTime
-
-    // Update heartbeat timestamp
-    lastHeartbeat = new Date()
-  } catch (error) {
-    console.error("Error checking for new referrals:", error)
-
-    // Check if it's an Axios error and handle authentication errors
-    if (axios.isAxiosError(error)) {
-      const axiosError = error as AxiosError
-      if (axiosError.response && (axiosError.response.status === 401 || axiosError.response.status === 403)) {
-        // Clear browser session and try again
-        await closeBrowser()
-        browser = null
-        page = null
-        isLoggedIn = false
-        currentFrame = null
-        throw error // Let the caller handle the retry
-      }
-    }
-
-    throw error
-  }
-}
-
-function extractXsrfToken(cookies: string): string {
-  const match = cookies.match(/XSRF-TOKEN=([^;]+)/)
-  return match ? match[1] : ""
-}
-
 // Function to start the monitoring process
 export async function startReferralMonitoring(): Promise<void> {
   console.log("🚀 Starting referral monitoring process with 30-second interval...")
@@ -3077,3 +2943,4 @@ export function stopReferralMonitoring(): void {
 
   isMonitoring = false
 }
+
