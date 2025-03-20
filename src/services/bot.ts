@@ -16,19 +16,13 @@
 // let monitoringInterval: NodeJS.Timeout | null = null
 // let isMonitoring = false
 // let currentMembers: MemberData[] = []
-// let lastHeartbeat = new Date()
-// let heartbeatInterval: NodeJS.Timeout | null = null
-// const restartAttempts = 0
-// const MAX_RESTART_ATTEMPTS = 5
 
 // // Constants
 // const AVAILITY_URL = "https://apps.availity.com"
 // const LOGIN_URL = "https://apps.availity.com/availity/web/public.elegant.login"
 // const REFERRALS_API_URL = "https://apps.availity.com/api/v1/proxy/anthem/provconn/v1/carecentral/ltss/referral/details"
 // const TOTP_SECRET = process.env.TOTP_SECRET || "RU4SZCAW4UESMUQNCG3MXTWKXA"
-// const MONITORING_INTERVAL_MS = 30000 // 30 seconds
-// const HEARTBEAT_INTERVAL_MS = 60000 // 1 minute
-// const HEARTBEAT_TIMEOUT_MS = 180000 // 3 minutes
+// const MONITORING_INTERVAL_MS = 50000 // 30 seconds
 
 // // Interfaces
 // interface ReferralResponse {
@@ -53,7 +47,6 @@
 //   serviceName?: string
 //   status?: string
 //   requestDate?: string
-//   county?: string
 //   additionalInfo?: string
 // }
 
@@ -62,23 +55,23 @@
 //   return new Promise((resolve) => setTimeout(resolve, ms))
 // }
 
-// // // Retry operation helper - reduced delay time
-// // async function retryOperation(operation: () => Promise<void>, retries = 3, delayMs = 1000) {
-// //   for (let i = 0; i < retries; i++) {
-// //     try {
-// //       await operation()
-// //       return
-// //     } catch (error) {
-// //       console.log(`Attempt ${i + 1} failed:`, error)
-// //       if (i < retries - 1) {
-// //         console.log(`Retrying in ${delayMs}ms...`)
-// //         await delay(delayMs)
-// //       } else {
-// //         throw error
-// //       }
-// //     }
-// //   }
-// // }
+// // Retry operation helper - reduced delay time
+// async function retryOperation(operation: () => Promise<void>, retries = 3, delayMs = 1000) {
+//   for (let i = 0; i < retries; i++) {
+//     try {
+//       await operation()
+//       return
+//     } catch (error) {
+//       console.log(`Attempt ${i + 1} failed:`, error)
+//       if (i < retries - 1) {
+//         console.log(`Retrying in ${delayMs}ms...`)
+//         await delay(delayMs)
+//       } else {
+//         throw error
+//       }
+//     }
+//   }
+// }
 
 // export async function getSessionCookies(): Promise<string> {
 //   if (!page) {
@@ -101,7 +94,7 @@
 // export async function setupBot(): Promise<void> {
 //   try {
 //     browser = await puppeteer.launch({
-//       headless: true,
+//       headless: false,
 //       // headless: "new" as any,
 //       args: [
 //         "--no-sandbox",
@@ -115,7 +108,7 @@
 //       ],
 
 //       defaultViewport: { width: 1280, height: 800 },
-//       timeout: 30000,
+//       timeout: 50000,
 //     })
 
 //     console.log("✅ Browser launched successfully")
@@ -127,8 +120,8 @@
 //     await page.setViewport({ width: 1280, height: 800 })
 
 //     // Add additional configurations
-//     await page.setDefaultNavigationTimeout(30000)
-//     await page.setDefaultTimeout(30000)
+//     await page.setDefaultNavigationTimeout(50000)
+//     await page.setDefaultTimeout(50000)
 
 //     // Enable request interception to optimize performance
 //     await page.setRequestInterception(true)
@@ -231,10 +224,10 @@
 //     // Wait for either navigation to complete or for 2FA form to appear
 //     try {
 //       await Promise.race([
-//         page.waitForNavigation({ timeout: 30000 }),
-//         page.waitForSelector('form[name="backupCodeForm"]', { timeout: 30000 }),
-//         page.waitForSelector('form[name="authenticatorCodeForm"]', { timeout: 30000 }),
-//         page.waitForSelector(".top-applications", { timeout: 30000 }),
+//         page.waitForNavigation({ timeout: 50000 }),
+//         page.waitForSelector('form[name="backupCodeForm"]', { timeout: 50000 }),
+//         page.waitForSelector('form[name="authenticatorCodeForm"]', { timeout: 50000 }),
+//         page.waitForSelector(".top-applications", { timeout: 50000 }),
 //       ])
 //     } catch (navError) {
 //       console.log("Navigation timeout or selector not found. Checking login status...")
@@ -301,7 +294,7 @@
 //   console.log("Starting 2FA authentication process...")
 //   try {
 //     // Wait for the 2FA options to be visible
-//     await page.waitForSelector('input[type="radio"]', { visible: true, timeout: 20000 })
+//     await page.waitForSelector('input[type="radio"]', { visible: true, timeout: 40000 })
 
 //     let authenticatorOptionSelected = false
 
@@ -363,7 +356,7 @@
 //     // Wait for the OTP input form to load
 //     await page.waitForSelector('input[name="code"], input[name="authenticatorCode"], input[type="text"]', {
 //       visible: true,
-//       timeout: 20000,
+//       timeout: 40000,
 //     })
 
 //     // Generate the TOTP code
@@ -409,7 +402,7 @@
 //         if (submitButton) {
 //           await Promise.all([
 //             submitButton.click(),
-//             page.waitForNavigation({ waitUntil: "networkidle2", timeout: 20000 }).catch(() => {
+//             page.waitForNavigation({ waitUntil: "networkidle2", timeout: 40000 }).catch(() => {
 //               // Navigation timeout after submitting code, but this might be expected
 //             }),
 //           ])
@@ -429,7 +422,7 @@
 //     try {
 //       await Promise.race([
 //         page.waitForSelector(".top-applications, .av-dashboard, .dashboard-container", {
-//           timeout: 20000,
+//           timeout: 50000,
 //           visible: true,
 //         }),
 //         page.waitForFunction(
@@ -437,10 +430,10 @@
 //             const headings = Array.from(document.querySelectorAll("h1, h2, h3, h4, h5, h6"))
 //             return headings.some((h) => h.textContent?.includes("Cookie Consent & Preferences"))
 //           },
-//           { timeout: 20000 },
+//           { timeout: 50000 },
 //         ),
 //         page.waitForSelector(".alert-danger, .error-message", {
-//           timeout: 20000,
+//           timeout: 50000,
 //           visible: true,
 //         }),
 //       ])
@@ -451,7 +444,7 @@
 //         throw new Error(`2FA resulted in error: ${text}`)
 //       }
 
-//       await delay(1000)
+//       await delay(3000)
 //     } catch (error) {
 //       // Navigation timeout after 2FA, but this might be expected
 //     }
@@ -552,7 +545,7 @@
 //   console.log("Navigating to Care Central...")
 //   try {
 //     // Wait for the dashboard to load
-//     await page.waitForSelector("body", { timeout: 30000, visible: true })
+//     await page.waitForSelector("body", { timeout: 50000, visible: true })
 
 //     // Wait for a bit to ensure the page is fully loaded
 //     await delay(1000)
@@ -612,7 +605,7 @@
 //           clicked = true
 
 //           // Wait a bit to see if navigation happens
-//           await delay(2000)
+//           await delay(4000)
 
 //           // Check if we've navigated away from the dashboard
 //           const currentUrl = page.url()
@@ -662,7 +655,7 @@
 //         try {
 //           await page.mouse.click(img.x, img.y)
 //           clicked = true
-//           await delay(2000)
+//           await delay(4000)
 //           break
 //         } catch (error) {
 //           // Try next image
@@ -683,7 +676,7 @@
 //       for (const pos of potentialPositions) {
 //         try {
 //           await page.mouse.click(pos.x, pos.y)
-//           await delay(2000)
+//           await delay(4000)
 
 //           // Check if we've navigated away
 //           const currentUrl = page.url()
@@ -702,7 +695,7 @@
 //     }
 
 //     // Wait for the iframe to load
-//     await page.waitForSelector("#newBodyFrame", { timeout: 20000 })
+//     await page.waitForSelector("#newBodyFrame", { timeout: 40000 })
 
 //     // Get all frames and find the one with name="newBody"
 //     const frames = page.frames()
@@ -713,10 +706,10 @@
 //     }
 
 //     // Wait for the form to load in the iframe
-//     await newBodyFrame.waitForSelector("form", { timeout: 20000 })
+//     await newBodyFrame.waitForSelector("form", { timeout: 40000 })
 
 //     // Wait for the organization dropdown to be present in the iframe
-//     await newBodyFrame.waitForSelector("#organizations", { timeout: 20000 })
+//     await newBodyFrame.waitForSelector("#organizations", { timeout: 40000 })
 
 //     // Click on the organization dropdown
 //     await newBodyFrame.click("#organizations")
@@ -727,7 +720,7 @@
 //     await delay(500)
 
 //     // Wait for and click the option
-//     await newBodyFrame.waitForSelector(".av-select", { visible: true, timeout: 20000 })
+//     await newBodyFrame.waitForSelector(".av-select", { visible: true, timeout: 30000 })
 //     await newBodyFrame.click(".av-select")
 
 //     // Look specifically for Harmony Health LLC option
@@ -761,7 +754,7 @@
 //     await delay(500)
 
 //     // Wait for dropdown options to appear
-//     await newBodyFrame.waitForSelector(".av__option", { visible: true, timeout: 10000 })
+//     await newBodyFrame.waitForSelector(".av__option", { visible: true, timeout: 30000 })
 
 //     // Look specifically for Harmony Health provider option
 //     const harmonyProviderOption = await newBodyFrame.evaluate(() => {
@@ -799,7 +792,7 @@
 //     await newBodyFrame.click("button.btn.btn-primary")
 
 //     // Wait for navigation
-//     await page.waitForNavigation({ waitUntil: "networkidle0", timeout: 20000 }).catch(() => {
+//     await page.waitForNavigation({ waitUntil: "networkidle0", timeout: 30000 }).catch(() => {
 //       // Navigation timeout after Next, but this might be expected
 //     })
 
@@ -821,7 +814,7 @@
 //       await currentFrame.click('button[data-id="referral"]')
 
 //       // Wait for the page to update after clicking
-//       await delay(2000)
+//       await delay(4000)
 //     } catch (error) {
 //       // Try alternative approach - evaluate and click directly in the frame
 //       const clicked = await currentFrame.evaluate(() => {
@@ -839,7 +832,7 @@
 //       }
 
 //       // Wait for the page to update
-//       await delay(2000)
+//       await delay(4000)
 //     }
 
 //     // Now extract member information from the referrals page
@@ -852,12 +845,12 @@
 
 // // Function to extract member information from the referrals page
 // async function extractMemberInformation(frame: any): Promise<MemberData[]> {
-//   console.log("Extracting member information from referrals page...")
+//   console.log("Extracting member information from referrals page...");
 //   try {
 //     // Wait for the referrals content to load
 //     await frame.waitForSelector(".incoming-referral-info", { timeout: 15000 }).catch(async () => {
 //       // If no referrals are found, send a notification and start monitoring
-//       console.log("No members found in referrals page.")
+//       console.log("No members found in referrals page.");
 
 //       // Send email notification that no members were found
 //       await sendEmail(
@@ -865,20 +858,20 @@
 //         "No members were found in the referrals section at this time.\n\n" +
 //           "The monitoring system is active and will check for new members every 30 seconds.\n\n" +
 //           "You will receive an email notification as soon as a new member is detected.",
-//       )
+//       );
 
 //       // Start continuous monitoring
-//       await startContinuousMonitoring(frame)
+//       await startContinuousMonitoring(frame);
 
-//       return []
-//     })
+//       return [];
+//     });
 
 //     // If referrals are found, extract member information
-//     const members = await extractMembersFromFrame(frame)
+//     const members = await extractMembersFromFrame(frame);
 
 //     // Send email with the extracted member information
 //     if (members.length > 0) {
-//       await sendMemberInformationEmail(members)
+//       await sendMemberInformationEmail(members);
 //     } else {
 //       // Send email notification that no members were found
 //       await sendEmail(
@@ -886,19 +879,19 @@
 //         "No members were found in the referrals section at this time.\n\n" +
 //           "The monitoring system is active and will check for new members every 30 seconds.\n\n" +
 //           "You will receive an email notification as soon as a new member is detected.",
-//       )
+//       );
 //     }
 
 //     // Save members to database
-//     await saveMembersToDatabase(members)
+//     await saveMembersToDatabase(members);
 
 //     // Start continuous monitoring for new referrals
-//     await startContinuousMonitoring(frame)
+//     await startContinuousMonitoring(frame);
 
-//     return members
+//     return members;
 //   } catch (error) {
-//     console.error("Error extracting member information:", error)
-//     return []
+//     console.error("Error extracting member information:", error);
+//     return [];
 //   }
 // }
 
@@ -912,7 +905,6 @@
 //         serviceName: string
 //         status: string
 //         requestDate: string
-//         county: string
 //         additionalInfo: string
 //       }> = []
 
@@ -1000,7 +992,6 @@
 //             serviceName,
 //             status,
 //             requestDate,
-//             county,
 //             additionalInfo: `Region: ${region}, County: ${county}, Program: ${program}, YOB: ${yearOfBirth}, Zip: ${zipCode}`,
 //           }
 
@@ -1035,10 +1026,6 @@
 
 //       if (member.status) {
 //         emailContent += `Status: ${member.status}\n`
-//       }
-
-//       if (member.county) {
-//         emailContent += `County: ${member.county}\n`
 //       }
 
 //       if (member.requestDate) {
@@ -1076,7 +1063,6 @@
 //           memberID: member.memberID,
 //           serviceName: member.serviceName || "",
 //           status: member.status || "",
-//           county: member.county || "",
 //           requestOn: member.requestDate || new Date().toISOString(),
 //           isNotified: true, // Already notified since we're extracting it now
 //         })
@@ -1101,87 +1087,48 @@
 //   }
 // }
 
-// // Function to start continuous monitoring for new referrals
 // async function startContinuousMonitoring(frame: any): Promise<void> {
 //   if (isMonitoring) {
-//     console.log("Monitoring already active, skipping setup")
-//     return // Already monitoring
+//     console.log("Monitoring already active, skipping setup");
+//     return; // Already monitoring
 //   }
 
-//   console.log("Starting continuous monitoring for new referrals")
-//   isMonitoring = true
+//   console.log("Starting continuous monitoring for new referrals");
+//   isMonitoring = true;
 
 //   // Store the current members for comparison
-//   currentMembers = await extractMembersFromFrame(frame)
-//   console.log(`Initial monitoring state: ${currentMembers.length} members`)
+//   currentMembers = await extractMembersFromFrame(frame);
+//   console.log(`Initial monitoring state: ${currentMembers.length} members`);
 
 //   // Set up the interval to check for new referrals every 30 seconds
 //   monitoringInterval = setInterval(async () => {
 //     try {
-//       console.log("Checking for new referrals...")
+//       console.log("Checking for new referrals...");
 //       // Extract the current members from the frame
-//       const newMembers = await extractMembersFromFrame(frame)
-//       console.log(`Found ${newMembers.length} members, comparing with previous ${currentMembers.length} members`)
+//       const newMembers = await extractMembersFromFrame(frame);
+//       console.log(`Found ${newMembers.length} members, comparing with previous ${currentMembers.length} members`);
 
 //       // Compare with previous members to find new ones
-//       const addedMembers = findNewMembers(currentMembers, newMembers)
+//       const addedMembers = findNewMembers(currentMembers, newMembers);
 
 //       // If new members are found, process them
 //       if (addedMembers.length > 0) {
-//         console.log(`Found ${addedMembers.length} new members!`)
+//         console.log(`Found ${addedMembers.length} new members!`);
 //         // Send notifications for new members
-//         await processNewMembers(addedMembers)
+//         await processNewMembers(addedMembers);
 //       } else {
-//         console.log("No new members found")
+//         console.log("No new members found");
 //       }
 
 //       // Update the current members list
-//       currentMembers = newMembers
-
-//       // Update heartbeat timestamp
-//       lastHeartbeat = new Date()
+//       currentMembers = newMembers;
 //     } catch (error) {
-//       console.error("Error during monitoring check:", error)
+//       console.error("Error during monitoring check:", error);
 //       // Log error but continue monitoring
 //     }
-//   }, MONITORING_INTERVAL_MS) // Check every 30 seconds
+//   }, MONITORING_INTERVAL_MS); // Check every 30 seconds
 
-//   // Set up heartbeat monitoring to detect if the bot stops working
-//   if (!heartbeatInterval) {
-//     let notificationSent = false
-
-//     heartbeatInterval = setInterval(async () => {
-//       const now = new Date()
-//       const timeSinceLastHeartbeat = now.getTime() - lastHeartbeat.getTime()
-
-//       if (timeSinceLastHeartbeat > HEARTBEAT_TIMEOUT_MS && !notificationSent) {
-//         console.error(`⚠️ Bot appears to be inactive for ${timeSinceLastHeartbeat / 1000} seconds!`)
-
-//         // Send notification that the bot is down - ONLY ONCE
-//         await sendEmail(
-//           "⚠️ ALERT: Availity Monitoring Bot is Down",
-//           `The Availity monitoring bot has not reported activity for ${Math.floor(timeSinceLastHeartbeat / 1000)} seconds.\n\n` +
-//             `Last activity was at ${lastHeartbeat.toLocaleString()}.\n\n` +
-//             `MANUAL INTERVENTION REQUIRED: Please restart the application to resume monitoring.\n\n` +
-//             `This is an automated message from the monitoring system.`,
-//         )
-
-//         // Mark notification as sent so we don't send it again
-//         notificationSent = true
-
-//         console.log("Down notification sent. Waiting for manual restart.")
-//       } else if (timeSinceLastHeartbeat <= HEARTBEAT_TIMEOUT_MS && notificationSent) {
-//         // If the bot is active again and we previously sent a notification
-//         notificationSent = false
-//         console.log("Bot appears to be active again. Resetting notification flag.")
-//       } else {
-//         console.log(`Heartbeat check: Bot active, last activity ${timeSinceLastHeartbeat / 1000} seconds ago`)
-//       }
-//     }, HEARTBEAT_INTERVAL_MS)
-//   }
-
-//   console.log(`Monitoring interval set up for every ${MONITORING_INTERVAL_MS / 1000} seconds`)
-//   console.log(`Heartbeat monitoring set up for every ${HEARTBEAT_INTERVAL_MS / 1000} seconds`)
+//   console.log(`Monitoring interval set up for every ${MONITORING_INTERVAL_MS / 1000} seconds`);
 // }
 
 // // Helper function to find new members by comparing two arrays
@@ -1215,10 +1162,6 @@
 
 //       if (member.status) {
 //         emailContent += `Status: ${member.status}\n`
-//       }
-
-//       if (member.county) {
-//         emailContent += `County: ${member.county}\n`
 //       }
 
 //       if (member.requestDate) {
@@ -1344,9 +1287,6 @@
 
 //     // Update last check time
 //     lastCheckTime = currentTime
-
-//     // Update heartbeat timestamp
-//     lastHeartbeat = new Date()
 //   } catch (error) {
 //     console.error("Error checking for new referrals:", error)
 
@@ -1371,13 +1311,12 @@
 //   return match ? match[1] : ""
 // }
 
+// // Replace the startReferralMonitoring function with this improved version that runs every 30 seconds
+
 // // Function to start the monitoring process
 // export async function startReferralMonitoring(): Promise<void> {
 //   console.log("🚀 Starting referral monitoring process with 30-second interval...")
 //   console.log(`⏰ Current time: ${new Date().toISOString()}`)
-
-//   // Initialize heartbeat
-//   lastHeartbeat = new Date()
 
 //   // Track the number of checks for debugging
 //   let checkCount = 0
@@ -1418,9 +1357,6 @@
 //       const endTime = new Date()
 //       const duration = (endTime.getTime() - startTime.getTime()) / 1000
 //       console.log(`✅ Scheduled check #${checkCount} completed successfully in ${duration.toFixed(2)} seconds`)
-
-//       // Update heartbeat timestamp on successful check
-//       lastHeartbeat = new Date()
 //     } catch (error) {
 //       console.error(`❌ Error in scheduled API check #${checkCount}:`, error)
 
@@ -1431,9 +1367,6 @@
 //         await delay(5000)
 //         await checkForNewReferrals()
 //         console.log(`✅ Retry for check #${checkCount} successful`)
-
-//         // Update heartbeat timestamp on successful retry
-//         lastHeartbeat = new Date()
 //       } catch (retryError) {
 //         console.error(`❌ Scheduled check #${checkCount} retry failed:`, retryError)
 //         // Continue even if retry fails
@@ -1441,60 +1374,20 @@
 //     }
 
 //     // Log next scheduled check time
-//     const nextCheckTime = new Date(Date.now() + MONITORING_INTERVAL_MS)
+//     const nextCheckTime = new Date(Date.now() + 30000)
 //     console.log(`🔔 Next check (#${checkCount + 1}) scheduled for ${nextCheckTime.toISOString()}`)
 //   }
 
 //   // Use setInterval with the exact millisecond value (30000 ms = 30 seconds)
-//   const intervalId = setInterval(performScheduledCheck, MONITORING_INTERVAL_MS)
-
-//   // Set up heartbeat monitoring to detect if the bot stops working
-//   if (!heartbeatInterval) {
-//     let notificationSent = false
-
-//     heartbeatInterval = setInterval(async () => {
-//       const now = new Date()
-//       const timeSinceLastHeartbeat = now.getTime() - lastHeartbeat.getTime()
-
-//       if (timeSinceLastHeartbeat > HEARTBEAT_TIMEOUT_MS && !notificationSent) {
-//         console.error(`⚠️ Bot appears to be inactive for ${timeSinceLastHeartbeat / 1000} seconds!`)
-
-//         // Send notification that the bot is down - ONLY ONCE
-//         await sendEmail(
-//           "⚠️ ALERT: Availity Monitoring Bot is Down",
-//           `The Availity monitoring bot has not reported activity for ${Math.floor(timeSinceLastHeartbeat / 1000)} seconds.\n\n` +
-//             `Last activity was at ${lastHeartbeat.toLocaleString()}.\n\n` +
-//             `MANUAL INTERVENTION REQUIRED: Please restart the application to resume monitoring.\n\n` +
-//             `This is an automated message from the monitoring system.`,
-//         )
-
-//         // Mark notification as sent so we don't send it again
-//         notificationSent = true
-
-//         console.log("Down notification sent. Waiting for manual restart.")
-//       } else if (timeSinceLastHeartbeat <= HEARTBEAT_TIMEOUT_MS && notificationSent) {
-//         // If the bot is active again and we previously sent a notification
-//         notificationSent = false
-//         console.log("Bot appears to be active again. Resetting notification flag.")
-//       } else {
-//         console.log(`Heartbeat check: Bot active, last activity ${timeSinceLastHeartbeat / 1000} seconds ago`)
-//       }
-//     }, HEARTBEAT_INTERVAL_MS)
-//   }
+//   const intervalId = setInterval(performScheduledCheck, 30000)
 
 //   console.log(`🔔 Monitoring setup complete - checking every 30 seconds`)
-//   console.log(
-//     `⏰ Next check (#${checkCount + 1}) scheduled for ${new Date(Date.now() + MONITORING_INTERVAL_MS).toISOString()}`,
-//   )
-//   console.log(`💓 Heartbeat monitoring active - checking every ${HEARTBEAT_INTERVAL_MS / 1000} seconds`)
+//   console.log(`⏰ Next check (#${checkCount + 1}) scheduled for ${new Date(Date.now() + 30000).toISOString()}`)
 
 //   // Add a function to stop monitoring if needed
 //   process.on("SIGINT", () => {
 //     console.log("🛑 Stopping monitoring due to application shutdown...")
 //     clearInterval(intervalId)
-//     if (heartbeatInterval) {
-//       clearInterval(heartbeatInterval)
-//     }
 //     closeBrowser().then(() => {
 //       console.log("✅ Monitoring stopped and browser closed successfully")
 //       process.exit(0)
@@ -1509,19 +1402,11 @@
 //     monitoringInterval = null
 //     console.log("Referral monitoring stopped")
 //   }
-
-//   if (heartbeatInterval) {
-//     clearInterval(heartbeatInterval)
-//     heartbeatInterval = null
-//     console.log("Heartbeat monitoring stopped")
-//   }
-
 //   isMonitoring = false
 // }
 
 
-
-import puppeteer, { type Browser, type Page } from "puppeteer"
+import puppeteer, { type Browser, type Page, type Frame } from "puppeteer"
 import axios, { type AxiosError } from "axios"
 import { authenticator } from "otplib"
 import { config } from "dotenv"
@@ -1539,22 +1424,15 @@ let lastCheckTime = new Date()
 let monitoringInterval: NodeJS.Timeout | null = null
 let isMonitoring = false
 let currentMembers: MemberData[] = []
-let lastHeartbeat = new Date()
-let heartbeatInterval: NodeJS.Timeout | null = null
-let isLoggedIn = false // Track login state
-let currentFrame: any = null // Store the current frame for monitoring
-const pendingRequests = new Set<string>() // Track pending requests to prevent duplicates
-const restartAttempts = 0
-const MAX_RESTART_ATTEMPTS = 5
+let isLoggedIn = false
+let currentFrame: Frame | null = null
 
 // Constants
 const AVAILITY_URL = "https://apps.availity.com"
 const LOGIN_URL = "https://apps.availity.com/availity/web/public.elegant.login"
 const REFERRALS_API_URL = "https://apps.availity.com/api/v1/proxy/anthem/provconn/v1/carecentral/ltss/referral/details"
 const TOTP_SECRET = process.env.TOTP_SECRET || "RU4SZCAW4UESMUQNCG3MXTWKXA"
-const MONITORING_INTERVAL_MS = 30000 // 30 seconds
-const HEARTBEAT_INTERVAL_MS = 60000 // 1 minute
-const HEARTBEAT_TIMEOUT_MS = 180000 // 3 minutes
+const MONITORING_INTERVAL_MS = 50000 // 30 seconds
 
 // Interfaces
 interface ReferralResponse {
@@ -1579,13 +1457,30 @@ interface MemberData {
   serviceName?: string
   status?: string
   requestDate?: string
-  county?: string
   additionalInfo?: string
 }
 
 // Helper function for timeouts - reduced delay times
 async function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+// Retry operation helper - reduced delay time
+async function retryOperation(operation: () => Promise<void>, retries = 3, delayMs = 1000) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      await operation()
+      return
+    } catch (error) {
+      console.log(`Attempt ${i + 1} failed:`, error)
+      if (i < retries - 1) {
+        console.log(`Retrying in ${delayMs}ms...`)
+        await delay(delayMs)
+      } else {
+        throw error
+      }
+    }
+  }
 }
 
 export async function getSessionCookies(): Promise<string> {
@@ -1610,11 +1505,9 @@ export async function closeBrowser(): Promise<void> {
 
 export async function setupBot(): Promise<void> {
   try {
-    // Close any existing browser instance first to prevent duplicates
-    await closeBrowser()
-    
     browser = await puppeteer.launch({
-      headless: true,
+      headless: false,
+      // headless: "new" as any,
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
@@ -1625,8 +1518,9 @@ export async function setupBot(): Promise<void> {
         "--single-process",
         "--disable-gpu",
       ],
+
       defaultViewport: { width: 1280, height: 800 },
-      timeout: 30000,
+      timeout: 50000,
     })
 
     console.log("✅ Browser launched successfully")
@@ -1638,45 +1532,18 @@ export async function setupBot(): Promise<void> {
     await page.setViewport({ width: 1280, height: 800 })
 
     // Add additional configurations
-    await page.setDefaultNavigationTimeout(30000)
-    await page.setDefaultTimeout(30000)
+    await page.setDefaultNavigationTimeout(50000)
+    await page.setDefaultTimeout(50000)
 
     // Enable request interception to optimize performance
     await page.setRequestInterception(true)
-    
     page.on("request", (request) => {
-      try {
-        const url = request.url()
-        
-        // Check if this request is already being handled
-        if (pendingRequests.has(url)) {
-          console.log(`Aborting duplicate request to: ${url}`)
-          request.abort()
-          return
-        }
-        
-        // Add this request to the pending set
-        pendingRequests.add(url)
-        
-        // Block unnecessary resources to speed up page loading
-        const resourceType = request.resourceType()
-        if (resourceType === "image" || resourceType === "font" || resourceType === "media") {
-          request.abort()
-        } else {
-          request.continue()
-        }
-        
-        // Remove from pending set after a short delay
-        setTimeout(() => {
-          pendingRequests.delete(url)
-        }, 5000)
-      } catch (error) {
-        // If there's an error, try to continue the request
-        try {
-          request.continue()
-        } catch (continueError) {
-          console.error("Error continuing request:", continueError)
-        }
+      // Block unnecessary resources to speed up page loading
+      const resourceType = request.resourceType()
+      if (resourceType === "image" || resourceType === "font" || resourceType === "media") {
+        request.abort()
+      } else {
+        request.continue()
       }
     })
 
@@ -1751,7 +1618,7 @@ export async function loginToAvaility(): Promise<boolean> {
       console.log("Already logged in and on referrals page, skipping login process")
       return true
     }
-    
+
     if (!browser || !page) {
       console.log("Browser or page not initialized. Setting up bot...")
       await setupBot()
@@ -1775,10 +1642,10 @@ export async function loginToAvaility(): Promise<boolean> {
     // Wait for either navigation to complete or for 2FA form to appear
     try {
       await Promise.race([
-        page.waitForNavigation({ timeout: 30000 }),
-        page.waitForSelector('form[name="backupCodeForm"]', { timeout: 30000 }),
-        page.waitForSelector('form[name="authenticatorCodeForm"]', { timeout: 30000 }),
-        page.waitForSelector(".top-applications", { timeout: 30000 }),
+        page.waitForNavigation({ timeout: 50000 }),
+        page.waitForSelector('form[name="backupCodeForm"]', { timeout: 50000 }),
+        page.waitForSelector('form[name="authenticatorCodeForm"]', { timeout: 50000 }),
+        page.waitForSelector(".top-applications", { timeout: 50000 }),
       ])
     } catch (navError) {
       console.log("Navigation timeout or selector not found. Checking login status...")
@@ -1849,7 +1716,7 @@ async function handle2FA(page: Page): Promise<void> {
   console.log("Starting 2FA authentication process...")
   try {
     // Wait for the 2FA options to be visible
-    await page.waitForSelector('input[type="radio"]', { visible: true, timeout: 20000 })
+    await page.waitForSelector('input[type="radio"]', { visible: true, timeout: 40000 })
 
     let authenticatorOptionSelected = false
 
@@ -1911,7 +1778,7 @@ async function handle2FA(page: Page): Promise<void> {
     // Wait for the OTP input form to load
     await page.waitForSelector('input[name="code"], input[name="authenticatorCode"], input[type="text"]', {
       visible: true,
-      timeout: 20000,
+      timeout: 40000,
     })
 
     // Generate the TOTP code
@@ -1957,7 +1824,7 @@ async function handle2FA(page: Page): Promise<void> {
         if (submitButton) {
           await Promise.all([
             submitButton.click(),
-            page.waitForNavigation({ waitUntil: "networkidle2", timeout: 20000 }).catch(() => {
+            page.waitForNavigation({ waitUntil: "networkidle2", timeout: 40000 }).catch(() => {
               // Navigation timeout after submitting code, but this might be expected
             }),
           ])
@@ -1977,7 +1844,7 @@ async function handle2FA(page: Page): Promise<void> {
     try {
       await Promise.race([
         page.waitForSelector(".top-applications, .av-dashboard, .dashboard-container", {
-          timeout: 20000,
+          timeout: 50000,
           visible: true,
         }),
         page.waitForFunction(
@@ -1985,10 +1852,10 @@ async function handle2FA(page: Page): Promise<void> {
             const headings = Array.from(document.querySelectorAll("h1, h2, h3, h4, h5, h6"))
             return headings.some((h) => h.textContent?.includes("Cookie Consent & Preferences"))
           },
-          { timeout: 20000 },
+          { timeout: 50000 },
         ),
         page.waitForSelector(".alert-danger, .error-message", {
-          timeout: 20000,
+          timeout: 50000,
           visible: true,
         }),
       ])
@@ -1999,12 +1866,12 @@ async function handle2FA(page: Page): Promise<void> {
         throw new Error(`2FA resulted in error: ${text}`)
       }
 
-      await delay(1000)
+      await delay(3000)
     } catch (error) {
       // Navigation timeout after 2FA, but this might be expected
     }
 
-    const isLoggedIn = await page.evaluate(() => {
+    const isLoggedInCheck = await page.evaluate(() => {
       const dashboardElements =
         document.querySelector(".top-applications") !== null ||
         document.querySelector(".av-dashboard") !== null ||
@@ -2017,7 +1884,7 @@ async function handle2FA(page: Page): Promise<void> {
       return dashboardElements || cookieConsent
     })
 
-    if (!isLoggedIn) {
+    if (!isLoggedInCheck) {
       throw new Error("2FA verification failed - no dashboard elements found")
     }
 
@@ -2100,7 +1967,7 @@ async function navigateToCareCentral(page: Page): Promise<void> {
   console.log("Navigating to Care Central...")
   try {
     // Wait for the dashboard to load
-    await page.waitForSelector("body", { timeout: 30000, visible: true })
+    await page.waitForSelector("body", { timeout: 50000, visible: true })
 
     // Wait for a bit to ensure the page is fully loaded
     await delay(1000)
@@ -2160,7 +2027,7 @@ async function navigateToCareCentral(page: Page): Promise<void> {
           clicked = true
 
           // Wait a bit to see if navigation happens
-          await delay(2000)
+          await delay(4000)
 
           // Check if we've navigated away from the dashboard
           const currentUrl = page.url()
@@ -2210,7 +2077,7 @@ async function navigateToCareCentral(page: Page): Promise<void> {
         try {
           await page.mouse.click(img.x, img.y)
           clicked = true
-          await delay(2000)
+          await delay(4000)
           break
         } catch (error) {
           // Try next image
@@ -2231,7 +2098,7 @@ async function navigateToCareCentral(page: Page): Promise<void> {
       for (const pos of potentialPositions) {
         try {
           await page.mouse.click(pos.x, pos.y)
-          await delay(2000)
+          await delay(4000)
 
           // Check if we've navigated away
           const currentUrl = page.url()
@@ -2250,7 +2117,7 @@ async function navigateToCareCentral(page: Page): Promise<void> {
     }
 
     // Wait for the iframe to load
-    await page.waitForSelector("#newBodyFrame", { timeout: 20000 })
+    await page.waitForSelector("#newBodyFrame", { timeout: 40000 })
 
     // Get all frames and find the one with name="newBody"
     const frames = page.frames()
@@ -2261,10 +2128,10 @@ async function navigateToCareCentral(page: Page): Promise<void> {
     }
 
     // Wait for the form to load in the iframe
-    await newBodyFrame.waitForSelector("form", { timeout: 20000 })
+    await newBodyFrame.waitForSelector("form", { timeout: 40000 })
 
     // Wait for the organization dropdown to be present in the iframe
-    await newBodyFrame.waitForSelector("#organizations", { timeout: 20000 })
+    await newBodyFrame.waitForSelector("#organizations", { timeout: 40000 })
 
     // Click on the organization dropdown
     await newBodyFrame.click("#organizations")
@@ -2275,7 +2142,7 @@ async function navigateToCareCentral(page: Page): Promise<void> {
     await delay(500)
 
     // Wait for and click the option
-    await newBodyFrame.waitForSelector(".av-select", { visible: true, timeout: 20000 })
+    await newBodyFrame.waitForSelector(".av-select", { visible: true, timeout: 30000 })
     await newBodyFrame.click(".av-select")
 
     // Look specifically for Harmony Health LLC option
@@ -2309,7 +2176,7 @@ async function navigateToCareCentral(page: Page): Promise<void> {
     await delay(500)
 
     // Wait for dropdown options to appear
-    await newBodyFrame.waitForSelector(".av__option", { visible: true, timeout: 10000 })
+    await newBodyFrame.waitForSelector(".av__option", { visible: true, timeout: 30000 })
 
     // Look specifically for Harmony Health provider option
     const harmonyProviderOption = await newBodyFrame.evaluate(() => {
@@ -2347,14 +2214,14 @@ async function navigateToCareCentral(page: Page): Promise<void> {
     await newBodyFrame.click("button.btn.btn-primary")
 
     // Wait for navigation
-    await page.waitForNavigation({ waitUntil: "networkidle0", timeout: 20000 }).catch(() => {
+    await page.waitForNavigation({ waitUntil: "networkidle0", timeout: 30000 }).catch(() => {
       // Navigation timeout after Next, but this might be expected
     })
 
     // Now we need to click on the Referrals button inside the iframe
     // Get the updated frames after navigation
     const updatedFrames = page.frames()
-    currentFrame = updatedFrames.find((frame) => frame.name() === "newBody")
+    currentFrame = updatedFrames.find((frame) => frame.name() === "newBody") || null
 
     if (!currentFrame) {
       throw new Error("Could not find newBody iframe after navigation")
@@ -2369,7 +2236,7 @@ async function navigateToCareCentral(page: Page): Promise<void> {
       await currentFrame.click('button[data-id="referral"]')
 
       // Wait for the page to update after clicking
-      await delay(2000)
+      await delay(4000)
     } catch (error) {
       // Try alternative approach - evaluate and click directly in the frame
       const clicked = await currentFrame.evaluate(() => {
@@ -2387,7 +2254,7 @@ async function navigateToCareCentral(page: Page): Promise<void> {
       }
 
       // Wait for the page to update
-      await delay(2000)
+      await delay(4000)
     }
 
     // Now extract member information from the referrals page
@@ -2395,18 +2262,19 @@ async function navigateToCareCentral(page: Page): Promise<void> {
   } catch (error) {
     console.error("Error navigating to Care Central:", error)
     currentFrame = null
+    isLoggedIn = false
     throw error
   }
 }
 
 // Function to extract member information from the referrals page
-async function extractMemberInformation(frame: any): Promise<MemberData[]> {
-  console.log("Extracting member information from referrals page...")
+async function extractMemberInformation(frame: Frame): Promise<MemberData[]> {
+  console.log("Extracting member information from referrals page...");
   try {
     // Wait for the referrals content to load
     await frame.waitForSelector(".incoming-referral-info", { timeout: 15000 }).catch(async () => {
       // If no referrals are found, send a notification and start monitoring
-      console.log("No members found in referrals page.")
+      console.log("No members found in referrals page.");
 
       // Send email notification that no members were found
       await sendEmail(
@@ -2414,20 +2282,20 @@ async function extractMemberInformation(frame: any): Promise<MemberData[]> {
         "No members were found in the referrals section at this time.\n\n" +
           "The monitoring system is active and will check for new members every 30 seconds.\n\n" +
           "You will receive an email notification as soon as a new member is detected.",
-      )
+      );
 
       // Start continuous monitoring
-      await startContinuousMonitoring(frame)
+      await startContinuousMonitoring(frame);
 
-      return []
-    })
+      return [];
+    });
 
     // If referrals are found, extract member information
-    const members = await extractMembersFromFrame(frame)
+    const members = await extractMembersFromFrame(frame);
 
     // Send email with the extracted member information
     if (members.length > 0) {
-      await sendMemberInformationEmail(members)
+      await sendMemberInformationEmail(members);
     } else {
       // Send email notification that no members were found
       await sendEmail(
@@ -2435,24 +2303,24 @@ async function extractMemberInformation(frame: any): Promise<MemberData[]> {
         "No members were found in the referrals section at this time.\n\n" +
           "The monitoring system is active and will check for new members every 30 seconds.\n\n" +
           "You will receive an email notification as soon as a new member is detected.",
-      )
+      );
     }
 
     // Save members to database
-    await saveMembersToDatabase(members)
+    await saveMembersToDatabase(members);
 
     // Start continuous monitoring for new referrals
-    await startContinuousMonitoring(frame)
+    await startContinuousMonitoring(frame);
 
-    return members
+    return members;
   } catch (error) {
-    console.error("Error extracting member information:", error)
-    return []
+    console.error("Error extracting member information:", error);
+    return [];
   }
 }
 
 // Helper function to extract members from the frame
-async function extractMembersFromFrame(frame: any): Promise<MemberData[]> {
+async function extractMembersFromFrame(frame: Frame): Promise<MemberData[]> {
   try {
     return await frame.evaluate(() => {
       const results: Array<{
@@ -2461,7 +2329,6 @@ async function extractMembersFromFrame(frame: any): Promise<MemberData[]> {
         serviceName: string
         status: string
         requestDate: string
-        county: string
         additionalInfo: string
       }> = []
 
@@ -2549,7 +2416,6 @@ async function extractMembersFromFrame(frame: any): Promise<MemberData[]> {
             serviceName,
             status,
             requestDate,
-            county,
             additionalInfo: `Region: ${region}, County: ${county}, Program: ${program}, YOB: ${yearOfBirth}, Zip: ${zipCode}`,
           }
 
@@ -2584,10 +2450,6 @@ async function sendMemberInformationEmail(members: MemberData[]): Promise<void> 
 
       if (member.status) {
         emailContent += `Status: ${member.status}\n`
-      }
-
-      if (member.county) {
-        emailContent += `County: ${member.county}\n`
       }
 
       if (member.requestDate) {
@@ -2625,7 +2487,6 @@ async function saveMembersToDatabase(members: MemberData[]): Promise<void> {
           memberID: member.memberID,
           serviceName: member.serviceName || "",
           status: member.status || "",
-          county: member.county || "",
           requestOn: member.requestDate || new Date().toISOString(),
           isNotified: true, // Already notified since we're extracting it now
         })
@@ -2650,139 +2511,116 @@ async function saveMembersToDatabase(members: MemberData[]): Promise<void> {
   }
 }
 
-// Function to start continuous monitoring for new referrals
-async function startContinuousMonitoring(frame: any): Promise<void> {
+async function startContinuousMonitoring(frame: Frame): Promise<void> {
   if (isMonitoring) {
-    console.log("Monitoring already active, skipping setup")
-    return // Already monitoring
+    console.log("Monitoring already active, skipping setup");
+    return; // Already monitoring
   }
 
-  console.log("Starting continuous monitoring for new referrals")
-  isMonitoring = true
+  console.log("Starting continuous monitoring for new referrals");
+  isMonitoring = true;
 
   // Store the current members for comparison
-  currentMembers = await extractMembersFromFrame(frame)
-  console.log(`Initial monitoring state: ${currentMembers.length} members`)
+  currentMembers = await extractMembersFromFrame(frame);
+  console.log(`Initial monitoring state: ${currentMembers.length} members`);
 
   // Set up the interval to check for new referrals every 30 seconds
   monitoringInterval = setInterval(async () => {
     try {
-      console.log("Checking for new referrals...")
+      console.log("Checking for new referrals...");
       
-      // Click the "incoming" tab to refresh the data
+      // Click on the "incoming" tab to refresh the data
       try {
-        console.log("Clicking the incoming tab to refresh data...")
+        console.log("Clicking on 'incoming' tab to refresh data...");
         
-        // First try to find and click the incoming tab
-        const incomingTabClicked = await frame.evaluate(() => {
-          // Look for the incoming tab by various selectors
-          const selectors = [
-            'button[data-id="incoming"]',
-            'a[data-id="incoming"]',
-            'button:has-text("Incoming")',
-            'a:has-text("Incoming")',
-            '.nav-link:has-text("Incoming")',
-            '.tab:has-text("Incoming")'
-          ];
-          
-          for (const selector of selectors) {
-            const element = document.querySelector(selector);
-            if (element) {
-              (element as HTMLElement).click();
-              return true;
+        // Try multiple selectors to find the incoming tab
+        const incomingTabSelectors = [
+          'button:has-text("Incoming")',
+          'a:has-text("Incoming")',
+          'div:has-text("Incoming")',
+          'span:has-text("Incoming")',
+          'li:has-text("Incoming")',
+          'tab:has-text("Incoming")',
+          '.nav-item:has-text("Incoming")',
+          '.nav-link:has-text("Incoming")',
+        ];
+        
+        let tabClicked = false;
+        
+        // Try each selector
+        for (const selector of incomingTabSelectors) {
+          try {
+            const elements = await frame.$$(selector);
+            for (const element of elements) {
+              // Check if this element is visible and contains only the text "Incoming"
+              const isRelevant = await element.evaluate((el) => {
+                const text = el.textContent?.trim();
+                return text === "Incoming" || text === "INCOMING";
+              });
+              
+              if (isRelevant) {
+                await element.click();
+                tabClicked = true;
+                console.log("Successfully clicked on 'incoming' tab");
+                break;
+              }
             }
+            if (tabClicked) break;
+          } catch (error) {
+            // Try next selector
           }
-          
-          // Try to find by text content
-          const elements = Array.from(document.querySelectorAll('button, a, .nav-link, .tab'));
-          const incomingElement = elements.find(el => 
-            el.textContent && 
-            el.textContent.trim().toLowerCase() === 'incoming'
-          );
-          
-          if (incomingElement) {
-            (incomingElement as HTMLElement).click();
-            return true;
-          }
-          
-          return false;
-        });
-        
-        if (incomingTabClicked) {
-          console.log("Successfully clicked the incoming tab");
-          // Wait a moment for the page to update
-          await delay(1000);
-        } else {
-          console.log("Could not find the incoming tab, will try to extract data anyway");
         }
-      } catch (clickError) {
-        console.error("Error clicking incoming tab:", clickError);
-        // Continue anyway to try to extract data
+        
+        // If we couldn't find the tab by text, try finding it by position or other attributes
+        if (!tabClicked) {
+          // Try to find tabs/navigation elements and click the first one (assuming it's "Incoming")
+          try {
+            const navElements = await frame.$$('.nav-tabs .nav-item, .nav-tabs .nav-link, .nav .nav-item, .nav .nav-link');
+            if (navElements.length > 0) {
+              await navElements[0].click();
+              tabClicked = true;
+              console.log("Clicked on first tab (assuming it's 'incoming')");
+            }
+          } catch (error) {
+            console.log("Could not find navigation elements");
+          }
+        }
+        
+        if (!tabClicked) {
+          console.log("Could not find and click 'incoming' tab with any method");
+        }
+        
+        // Wait a moment for the page to update after clicking
+        await delay(2000);
+      } catch (error) {
+        console.error("Error clicking on 'incoming' tab:", error);
       }
       
       // Extract the current members from the frame
-      const newMembers = await extractMembersFromFrame(frame)
-      console.log(`Found ${newMembers.length} members, comparing with previous ${currentMembers.length} members`)
+      const newMembers = await extractMembersFromFrame(frame);
+      console.log(`Found ${newMembers.length} members, comparing with previous ${currentMembers.length} members`);
 
       // Compare with previous members to find new ones
-      const addedMembers = findNewMembers(currentMembers, newMembers)
+      const addedMembers = findNewMembers(currentMembers, newMembers);
 
       // If new members are found, process them
       if (addedMembers.length > 0) {
-        console.log(`Found ${addedMembers.length} new members!`)
+        console.log(`Found ${addedMembers.length} new members!`);
         // Send notifications for new members
-        await processNewMembers(addedMembers)
+        await processNewMembers(addedMembers);
       } else {
-        console.log("No new members found")
+        console.log("No new members found");
       }
 
       // Update the current members list
-      currentMembers = newMembers
-
-      // Update heartbeat timestamp
-      lastHeartbeat = new Date()
+      currentMembers = newMembers;
     } catch (error) {
-      console.error("Error during monitoring check:", error)
+      console.error("Error during monitoring check:", error);
       // Log error but continue monitoring
     }
-  }, MONITORING_INTERVAL_MS) // Check every 30 seconds
+  }, MONITORING_INTERVAL_MS); // Check every 30 seconds
 
-  // Set up heartbeat monitoring to detect if the bot stops working
-  if (!heartbeatInterval) {
-    let notificationSent = false
-
-    heartbeatInterval = setInterval(async () => {
-      const now = new Date()
-      const timeSinceLastHeartbeat = now.getTime() - lastHeartbeat.getTime()
-
-      if (timeSinceLastHeartbeat > HEARTBEAT_TIMEOUT_MS && !notificationSent) {
-        console.error(`⚠️ Bot appears to be inactive for ${timeSinceLastHeartbeat / 1000} seconds!`)
-
-        // Send notification that the bot is down - ONLY ONCE
-        await sendEmail(
-          "⚠️ ALERT: Availity Monitoring Bot is Down",
-          `The Availity monitoring bot has not reported activity for ${Math.floor(timeSinceLastHeartbeat / 1000)} seconds.\n\n` +
-            `Last activity was at ${lastHeartbeat.toLocaleString()}.\n\n` +
-            `MANUAL INTERVENTION REQUIRED: Please restart the application to resume monitoring.\n\n` +
-            `This is an automated message from the monitoring system.`,
-        )
-
-        // Mark notification as sent so we don't send it again
-        notificationSent = true
-
-        console.log("Down notification sent. Waiting for manual restart.")
-      } else if (timeSinceLastHeartbeat <= HEARTBEAT_TIMEOUT_MS && notificationSent) {
-        // If the bot is active again and we previously sent a notification
-        notificationSent = false
-        console.log("Bot appears to be active again. Resetting notification flag.")
-      } else {
-        console.log(`Heartbeat check: Bot active, last activity ${timeSinceLastHeartbeat / 1000} seconds ago`)
-      }
-    }, HEARTBEAT_INTERVAL_MS)
-  }
-
-  console.log(`Monitoring interval set up for every ${MONITORING_INTERVAL_MS / 1000} seconds`)
-  console.log(`Heartbeat monitoring set up for every ${HEARTBEAT_INTERVAL_MS / 1000} seconds`)
+  console.log(`Monitoring interval set up for every ${MONITORING_INTERVAL_MS / 1000} seconds`);
 }
 
 // Helper function to find new members by comparing two arrays
@@ -2818,10 +2656,6 @@ async function processNewMembers(members: MemberData[]): Promise<void> {
         emailContent += `Status: ${member.status}\n`
       }
 
-      if (member.county) {
-        emailContent += `County: ${member.county}\n`
-      }
-
       if (member.requestDate) {
         emailContent += `Request Date: ${member.requestDate}\n`
       }
@@ -2843,30 +2677,162 @@ async function processNewMembers(members: MemberData[]): Promise<void> {
   }
 }
 
+// Function to check for new referrals using API
+export async function checkForNewReferrals(): Promise<void> {
+  console.log("Starting API-based check for new referrals...")
+  try {
+    // Only login if we're not already logged in
+    if (!isLoggedIn || !currentFrame) {
+      console.log("Not logged in, initiating login process...")
+      const loginSuccess = await loginToAvaility()
+      if (!loginSuccess) {
+        throw new Error("Failed to login to Availity")
+      }
+    } else {
+      console.log("Already logged in, skipping login process")
+    }
+
+    // Get session cookies
+    const cookies = await getSessionCookies()
+
+    // Extract XSRF token
+    const xsrfToken = extractXsrfToken(cookies)
+
+    // Make API request to fetch referrals
+    console.log("Making API request to fetch referrals...")
+    const response = await axios.post<ReferralResponse>(
+      REFERRALS_API_URL,
+      {
+        brand: "WLP",
+        npi: "1184328189",
+        papi: "",
+        state: "TN",
+        tabStatus: "INCOMING",
+        taxId: "922753606",
+      },
+      {
+        headers: {
+          Cookie: cookies,
+          "Content-Type": "application/json",
+          "X-XSRF-TOKEN": xsrfToken,
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
+          Referer: "https://apps.availity.com/public/apps/care-central/",
+        },
+      },
+    )
+
+    const currentTime = new Date()
+    console.log(`Retrieved ${response.data.referrals.length} referrals from API`)
+
+    const newReferrals = response.data.referrals.filter((referral) => {
+      const requestDate = new Date(referral.requestOn)
+      return requestDate > lastCheckTime
+    })
+
+    console.log(`Found ${newReferrals.length} new referrals since last check`)
+
+    if (newReferrals.length > 0) {
+      // Process each new referral
+      for (const referral of newReferrals) {
+        // Check if referral already exists in database
+        const existingReferral = await Referral.findOne({
+          memberID: referral.memberID,
+          requestOn: referral.requestOn,
+        })
+
+        if (!existingReferral) {
+          // Save the new referral
+          const savedReferral = await Referral.create({
+            ...referral,
+            isNotified: false,
+          })
+
+          // Create notification
+          const notification = await Notification.create({
+            referralId: savedReferral._id,
+            memberName: referral.memberName,
+            memberID: referral.memberID,
+            message: `New referral for ${referral.memberName} (${referral.serviceName}) received on ${referral.requestOn}`,
+          })
+
+          // Send email notification
+          await sendEmail(
+            "New Referral Notification",
+            `New referral received for ${referral.memberName} (ID: ${referral.memberID}).\n\n` +
+              `Service: ${referral.serviceName}\n` +
+              `Region: ${referral.regionName}\n` +
+              `County: ${referral.county}\n` +
+              `Plan: ${referral.plan}\n` +
+              `Preferred Start Date: ${referral.preferredStartDate}\n` +
+              `Status: ${referral.status}`,
+          )
+
+          // Send SMS notification
+          await sendSMS(
+            `New referral: ${referral.memberName} (${referral.memberID}) for ${referral.serviceName}. Check dashboard for details.`,
+          )
+
+          // Mark as notified
+          savedReferral.isNotified = true
+          await savedReferral.save()
+        }
+      }
+    } else {
+      console.log("No new referrals found in this check")
+    }
+
+    // Update last check time
+    lastCheckTime = currentTime
+  } catch (error) {
+    console.error("Error checking for new referrals:", error)
+
+    // Check if it's an Axios error and handle authentication errors
+    if (axios.isAxiosError(error)) {
+      const axiosError = error as AxiosError
+      if (axiosError.response && (axiosError.response.status === 401 || axiosError.response.status === 403)) {
+        // Clear browser session and try again
+        await closeBrowser()
+        browser = null
+        page = null
+        isLoggedIn = false
+        currentFrame = null
+        throw error // Let the caller handle the retry
+      }
+    }
+
+    throw error
+  }
+}
+
+function extractXsrfToken(cookies: string): string {
+  const match = cookies.match(/XSRF-TOKEN=([^;]+)/)
+  return match ? match[1] : ""
+}
+
 // Function to start the monitoring process
 export async function startReferralMonitoring(): Promise<void> {
   console.log("🚀 Starting referral monitoring process with 30-second interval...")
   console.log(`⏰ Current time: ${new Date().toISOString()}`)
 
-  // Initialize heartbeat
-  lastHeartbeat = new Date()
+  // Track the number of checks for debugging
+  let checkCount = 0
 
+  // Initial check
   try {
-    console.log("📊 Performing initial login and navigation...")
-    // Login to Availity - this will navigate to the referrals page and start monitoring
-    await loginToAvaility()
-    console.log(`✅ Initial login and navigation completed successfully at ${new Date().toISOString()}`)
-    
-    // The monitoring is now handled by startContinuousMonitoring which is called from extractMemberInformation
-    
+    console.log("📊 Performing initial referral check (#0)...")
+    await checkForNewReferrals()
+    checkCount++
+    console.log(`✅ Initial check completed successfully at ${new Date().toISOString()}`)
   } catch (error) {
-    console.error("❌ Error in initial login:", error)
+    console.error("❌ Error in initial referral check:", error)
     // Retry on error
     try {
-      console.log("🔄 Retrying initial login after error...")
+      console.log("🔄 Retrying initial check after error...")
       await closeBrowser()
       await delay(5000)
-      await loginToAvaility()
+      await checkForNewReferrals()
+      checkCount++
       console.log("✅ Retry successful")
     } catch (retryError) {
       console.error("❌ Retry failed:", retryError)
@@ -2874,52 +2840,51 @@ export async function startReferralMonitoring(): Promise<void> {
     }
   }
 
-  // Set up heartbeat monitoring to detect if the bot stops working
-  if (!heartbeatInterval) {
-    let notificationSent = false
+  // Set up interval for API-based checks every 30 seconds
+  console.log(`⏱️ Setting up scheduled checks every 30 seconds...`)
 
-    heartbeatInterval = setInterval(async () => {
-      const now = new Date()
-      const timeSinceLastHeartbeat = now.getTime() - lastHeartbeat.getTime()
+  // Use a named function for the interval callback for better debugging
+  const performScheduledCheck = async () => {
+    checkCount++
+    const startTime = new Date()
+    console.log(`⏳ Running scheduled API check #${checkCount} at ${startTime.toISOString()}...`)
 
-      if (timeSinceLastHeartbeat > HEARTBEAT_TIMEOUT_MS && !notificationSent) {
-        console.error(`⚠️ Bot appears to be inactive for ${timeSinceLastHeartbeat / 1000} seconds!`)
+    try {
+      await checkForNewReferrals()
+      const endTime = new Date()
+      const duration = (endTime.getTime() - startTime.getTime()) / 1000
+      console.log(`✅ Scheduled check #${checkCount} completed successfully in ${duration.toFixed(2)} seconds`)
+    } catch (error) {
+      console.error(`❌ Error in scheduled API check #${checkCount}:`, error)
 
-        // Send notification that the bot is down - ONLY ONCE
-        await sendEmail(
-          "⚠️ ALERT: Availity Monitoring Bot is Down",
-          `The Availity monitoring bot has not reported activity for ${Math.floor(timeSinceLastHeartbeat / 1000)} seconds.\n\n` +
-            `Last activity was at ${lastHeartbeat.toLocaleString()}.\n\n` +
-            `MANUAL INTERVENTION REQUIRED: Please restart the application to resume monitoring.\n\n` +
-            `This is an automated message from the monitoring system.`,
-        )
-
-        // Mark notification as sent so we don't send it again
-        notificationSent = true
-
-        console.log("Down notification sent. Waiting for manual restart.")
-      } else if (timeSinceLastHeartbeat <= HEARTBEAT_TIMEOUT_MS && notificationSent) {
-        // If the bot is active again and we previously sent a notification
-        notificationSent = false
-        console.log("Bot appears to be active again. Resetting notification flag.")
-      } else {
-        console.log(`Heartbeat check: Bot active, last activity ${timeSinceLastHeartbeat / 1000} seconds ago`)
+      // Retry on error
+      try {
+        console.log(`🔄 Retrying scheduled check #${checkCount} after error...`)
+        await closeBrowser()
+        await delay(5000)
+        await checkForNewReferrals()
+        console.log(`✅ Retry for check #${checkCount} successful`)
+      } catch (retryError) {
+        console.error(`❌ Scheduled check #${checkCount} retry failed:`, retryError)
+        // Continue even if retry fails
       }
-    }, HEARTBEAT_INTERVAL_MS)
+    }
+
+    // Log next scheduled check time
+    const nextCheckTime = new Date(Date.now() + 30000)
+    console.log(`🔔 Next check (#${checkCount + 1}) scheduled for ${nextCheckTime.toISOString()}`)
   }
 
+  // Use setInterval with the exact millisecond value (30000 ms = 30 seconds)
+  const intervalId = setInterval(performScheduledCheck, 30000)
+
   console.log(`🔔 Monitoring setup complete - checking every 30 seconds`)
-  console.log(`💓 Heartbeat monitoring active - checking every ${HEARTBEAT_INTERVAL_MS / 1000} seconds`)
+  console.log(`⏰ Next check (#${checkCount + 1}) scheduled for ${new Date(Date.now() + 30000).toISOString()}`)
 
   // Add a function to stop monitoring if needed
   process.on("SIGINT", () => {
     console.log("🛑 Stopping monitoring due to application shutdown...")
-    if (heartbeatInterval) {
-      clearInterval(heartbeatInterval)
-    }
-    if (monitoringInterval) {
-      clearInterval(monitoringInterval)
-    }
+    clearInterval(intervalId)
     closeBrowser().then(() => {
       console.log("✅ Monitoring stopped and browser closed successfully")
       process.exit(0)
@@ -2934,13 +2899,6 @@ export function stopReferralMonitoring(): void {
     monitoringInterval = null
     console.log("Referral monitoring stopped")
   }
-
-  if (heartbeatInterval) {
-    clearInterval(heartbeatInterval)
-    heartbeatInterval = null
-    console.log("Heartbeat monitoring stopped")
-  }
-
   isMonitoring = false
 }
 
