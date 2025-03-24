@@ -3187,7 +3187,7 @@ async function extractMemberInformation(frame: Frame): Promise<MemberData[]> {
         await sendEmail(
           "Availity Referrals Monitoring Active",
           "No members were found in the referrals section at this time.\n\n" +
-            "The monitoring system is active and will check for new members every 30 seconds.\n\n" +
+            "The monitoring system is active and will check for new members every 10 seconds.\n\n" +
             "You will receive an email notification as soon as a new member is detected.",
         );
 
@@ -3872,7 +3872,7 @@ function extractXsrfToken(cookies: string): string {
 
 // Function to start the monitoring process
 export async function startReferralMonitoring(): Promise<void> {
-  console.log("🚀 Starting referral monitoring process with 30-second interval...")
+  console.log("🚀 Starting referral monitoring process with 10-second interval...")
   console.log(`⏰ Current time: ${new Date().toISOString()}`)
 
   // Initialize the lastSuccessfulOperation time
