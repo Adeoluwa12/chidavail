@@ -2,7 +2,6 @@
   "name": "cd-bot",
   "version": "1.0.0",
   "main": "index.js",
-  
   "scripts": {
     "build": "tsc",
     "postbuild": "copyfiles -u 1 \"src/public/**/*\" dist",
@@ -13,7 +12,6 @@
     "clean": "rm -rf dist",
     "rebuild": "npm run clean && npm run build && npm run copy-public"
   },
-
   "keywords": [],
   "author": "",
   "license": "ISC",
