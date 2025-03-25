@@ -1,17 +1,16 @@
 {
   "name": "cd-bot",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "botworker.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && cp botworker.js dist/",
     "postbuild": "copyfiles -u 1 \"src/public/**/*\" dist",
-    "copy-public": "mkdir -p dist/public && cp -r src/public/* dist/public/",
-    "start": "npx puppeteer browsers install chrome && node start-wrapper.js",
-    "start-old": "npx puppeteer browsers install chrome && node dist/app.js",
+    "start": "npx puppeteer browsers install chrome && node botworker.js",
     "dev": "ts-node src/app.ts",
     "clean": "rm -rf dist",
-    "rebuild": "npm run clean && npm run build && npm run copy-public"
+    "rebuild": "npm run clean && npm run build"
   },
+
   "keywords": [],
   "author": "",
   "license": "ISC",
