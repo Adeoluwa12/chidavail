@@ -4261,7 +4261,7 @@ export async function setupBot(): Promise<void> {
     await closeBrowser()
 
     browser = await puppeteer.launch({
-      headless: false,
+      headless: true,
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
@@ -4295,7 +4295,7 @@ export async function setupBot(): Promise<void> {
         "--js-flags=--max-old-space-size=512",
       ],
       defaultViewport: { width: 1024, height: 768 }, // Reduced from 1280x800
-      timeout: 60000, // Increased timeout
+      timeout: 120000, // Increased timeout
     })
 
     console.log("✅ Browser launched successfully")
@@ -4454,185 +4454,109 @@ async function handlePopups(page: Page): Promise<void> {
   }
 }
 
-export async function loginToAvaility(): Promise<boolean> {
-  // Create a unique request ID for this login attempt
-  const requestId = `login-${Date.now()}`
+let loginAttempts = 0; // Track consecutive login failures
+const MAX_LOGIN_ATTEMPTS = 3; // Restart bot if login fails 3 times
 
-  // Check if this request is already in progress
+export async function loginToAvaility(): Promise<boolean> {
+  const requestId = `login-${Date.now()}`;
+
   if (pendingRequests.has(requestId)) {
-    console.log(`Login request ${requestId} is already in progress, skipping`)
-    return false
+    console.log(`Login request ${requestId} is already in progress, skipping`);
+    return false;
   }
 
-  // Add this request to pending requests
-  pendingRequests.add(requestId)
-
-  // Save current monitoring state
-  const wasMonitoring = isMonitoring
+  pendingRequests.add(requestId);
 
   // Pause monitoring during login
+  const wasMonitoring = isMonitoring;
   if (monitoringInterval) {
-    console.log("Pausing monitoring during login process...")
-    clearInterval(monitoringInterval)
-    monitoringInterval = null
-    isMonitoring = false
+    console.log("Pausing monitoring during login process...");
+    clearInterval(monitoringInterval);
+    monitoringInterval = null;
+    isMonitoring = false;
   }
 
-  console.log("Starting Availity login process...")
+  console.log(`[${new Date().toISOString()}] Starting Availity login process...`);
 
   try {
-    // Check if browser needs to be restarted
-    // await checkBrowserHealth()
-
-    // Check if we're already logged in and have a valid frame for monitoring
-    if (isLoggedIn && currentFrame) {
-      try {
-        // Verify the frame is still valid by executing a simple operation
-        await currentFrame.evaluate(() => document.title)
-        console.log("Already logged in and on referrals page, skipping login process")
-
-        // Resume monitoring if it was active before
-        if (wasMonitoring && !isMonitoring) {
-          console.log("Resuming monitoring after login check...")
-          await startContinuousMonitoring(currentFrame)
-        }
-
-        pendingRequests.delete(requestId)
-        return true
-      } catch (frameError) {
-        console.log("Current frame is no longer valid, will re-login")
-        isLoggedIn = false
-        currentFrame = null
-      }
+    // Ensure any existing browser session is closed before starting a new one
+    if (browser) {
+      console.log("Closing existing browser instance before login...");
+      await closeBrowser();
+      browser = null;
+      page = null;
+      currentFrame = null;
     }
 
-    if (!browser || !page) {
-      console.log("Browser or page not initialized. Setting up bot...")
-      await setupBot()
-    }
+    console.log("Launching new browser...");
+    await setupBot();
 
     if (!page) {
-      throw new Error("Browser page not initialized")
+      throw new Error("Browser page not initialized");
     }
 
-    console.log("Navigating to Availity login page...")
+    console.log("Navigating to Availity login page...");
     await withoutInterception(page!, async () => {
-      await page!.goto(LOGIN_URL, { waitUntil: "networkidle2" })
-    })
+      await page!.goto(LOGIN_URL, { waitUntil: "networkidle2", timeout: 120000 }); // 2-minute timeout
+    });
 
-    // Enter username and password
-    console.log("Entering credentials...")
-    await safeOperation(() => page!.type("#userId", process.env.AVAILITY_USERNAME || ""), null)
-    await safeOperation(() => page!.type("#password", process.env.AVAILITY_PASSWORD || ""), null)
+    console.log("Entering credentials...");
+    await safeOperation(() => page!.type("#userId", process.env.AVAILITY_USERNAME || ""), null);
+    await safeOperation(() => page!.type("#password", process.env.AVAILITY_PASSWORD || ""), null);
 
-    // Click login button
-    await safeOperation(() => page!.click('button[type="submit"]'), null)
+    console.log("Clicking login button...");
+    await safeOperation(() => page!.click('button[type="submit"]'), null);
 
-    // Wait for either navigation to complete or for 2FA form to appear
+    console.log("Waiting for login response...");
     try {
       await Promise.race([
-        withoutInterception(page!, async () => {
-          await page!.waitForNavigation({ timeout: 50000 })
-        }),
-        safeOperation(() => page!.waitForSelector('form[name="backupCodeForm"]', { timeout: 50000 }), null),
-        safeOperation(() => page!.waitForSelector('form[name="authenticatorCodeForm"]', { timeout: 50000 }), null),
-        safeOperation(() => page!.waitForSelector(".top-applications", { timeout: 50000 }), null),
-      ])
+        page!.waitForNavigation({ timeout: 60000 }), // 60-second timeout
+        page!.waitForSelector(".top-applications", { timeout: 60000 }), // Dashboard element
+      ]);
     } catch (navError) {
-      console.log("Navigation timeout or selector not found. Checking login status...")
+      console.log("Navigation timeout or selector not found. Checking login status...");
     }
 
-    // Check if we're logged in by looking for dashboard elements
-    const loginCheck = await safeOperation(
-      () =>
-        page!.evaluate(() => {
-          const dashboardElements =
-            document.querySelector(".top-applications") !== null ||
-            document.querySelector(".av-dashboard") !== null ||
-            document.querySelector(".dashboard-container") !== null
+    // Verify login success
+    const loginCheck = await safeOperation(() =>
+      page!.evaluate(() => {
+        return document.querySelector(".top-applications") !== null;
+      }), false
+    );
 
-          const cookieConsent = Array.from(document.querySelectorAll("h1, h2, h3, h4, h5, h6")).some((h) =>
-            h.textContent?.includes("Cookie Consent & Preferences"),
-          )
-
-          return dashboardElements || cookieConsent
-        }),
-      false,
-    )
-
-    // Check if we need to handle 2FA
-    console.log("Checking if 2FA authentication is required...")
-    const is2FARequired = await safeOperation(
-      () =>
-        page!.evaluate(() => {
-          return (
-            document.querySelector('form[name="backupCodeForm"]') !== null ||
-            document.querySelector('form[name="authenticatorCodeForm"]') !== null ||
-            document.querySelector('input[type="radio"][value*="authenticator"]') !== null ||
-            document.querySelector('input[type="radio"][value*="backup"]') !== null
-          )
-        }),
-      false,
-    )
-
-    if (is2FARequired) {
-      console.log("2FA authentication is required. Handling 2FA...")
-      await handle2FA(page!)
-      isLoggedIn = true
-    } else if (loginCheck) {
-      console.log("Already logged in - no 2FA required")
-      isLoggedIn = true
+    if (loginCheck) {
+      console.log("✅ Successfully logged in!");
+      isLoggedIn = true;
+      loginAttempts = 0; // Reset login failure count
     } else {
-      const currentUrl = page!.url()
-      console.log(`Current URL: ${currentUrl}`)
-
-      if (currentUrl.includes("login") || currentUrl.includes("authenticate")) {
-        throw new Error("Login failed - still on login page")
-      }
+      throw new Error("Login failed - still on login page");
     }
-
-    // Handle any cookie consent popup that might appear after login
-    await handleCookieConsent(page!)
-
-    // Handle any other popups that might appear
-    await handlePopups(page!)
-
-    // Navigate to Care Central
-    console.log("Proceeding to navigate to Care Central...")
-    await navigateToCareCentral(page!)
-
-    console.log("Login process completed successfully")
 
     // Resume monitoring if it was active before
-    if (wasMonitoring && !isMonitoring && currentFrame) {
-      console.log("Resuming monitoring after successful login...")
-      await startContinuousMonitoring(currentFrame)
-    }
+    if (wasMonitoring) {
+      console.log("Resuming monitoring after login...");
+      await startContinuousMonitoring(currentFrame!);    }
 
-    pendingRequests.delete(requestId)
-    return true
+    pendingRequests.delete(requestId);
+    return true;
   } catch (error) {
-    console.error("Error during login attempt:", error)
-    isLoggedIn = false
-    currentFrame = null
+    console.error("❌ Login failed:", error);
 
-    // Try to resume monitoring if it was active before, even after error
-    if (wasMonitoring && !isMonitoring) {
-      console.log("Attempting to resume monitoring after login failure...")
-      // Try again to login after a short delay
-      setTimeout(async () => {
-        try {
-          await loginToAvaility()
-        } catch (retryError) {
-          console.error("Failed to login on retry:", retryError)
-        }
-      }, 60000) // Wait 1 minute before retry
+    loginAttempts++;
+    if (loginAttempts >= MAX_LOGIN_ATTEMPTS) {
+      console.log("🚨 Too many login failures! Restarting bot...");
+      loginAttempts = 0;
+      await closeBrowser();
+      await delay(5000);
+      await setupBot();
+      return false;
     }
 
-    pendingRequests.delete(requestId)
-    throw error
+    pendingRequests.delete(requestId);
+    return false;
   }
 }
+
 
 async function handle2FA(page: Page): Promise<void> {
   console.log("Starting 2FA authentication process...")
@@ -5779,181 +5703,268 @@ async function processNewMembers(members: MemberData[]): Promise<void> {
   }
 }
 
-// Function to check for new referrals using API
-export async function checkForNewReferrals(): Promise<void> {
-  // Create a unique request ID for this API check
-  const requestId = `api-check-${Date.now()}`
+// // Function to check for new referrals using API
+// export async function checkForNewReferrals(): Promise<void> {
+//   // Create a unique request ID for this API check
+//   const requestId = `api-check-${Date.now()}`
 
-  // Check if this request is already in progress
+//   // Check if this request is already in progress
+//   if (pendingRequests.has(requestId)) {
+//     console.log(`API check request ${requestId} is already in progress, skipping`)
+//     return
+//   }
+
+//   // Add this request to pending requests
+//   pendingRequests.add(requestId)
+
+//   console.log("Starting API-based check for new referrals...")
+//   try {
+//     // Check if browser needs to be restarted
+//     // await checkBrowserHealth()
+
+//     // Only login if we're not already logged in
+//     if (!isLoggedIn || !currentFrame) {
+//       console.log("Not logged in, initiating login process...")
+//       const loginSuccess = await loginToAvaility()
+//       if (!loginSuccess) {
+//         throw new Error("Failed to login to Availity")
+//       }
+//     } else {
+//       console.log("Already logged in, skipping login process")
+//     }
+
+//     // Get session cookies
+//     const cookies = await getSessionCookies()
+
+//     // Extract XSRF token
+//     const xsrfToken = extractXsrfToken(cookies)
+
+//     // Make API request to fetch referrals
+//     console.log("Making API request to fetch referrals...")
+//     try {
+//       const response = await axios.post<ReferralResponse>(
+//         REFERRALS_API_URL,
+//         {
+//           brand: "WLP",
+//           npi: "1184328189",
+//           papi: "",
+//           state: "TN",
+//           tabStatus: "INCOMING",
+//           taxId: "922753606",
+//         },
+//         {
+//           headers: {
+//             Cookie: cookies,
+//             "Content-Type": "application/json",
+//             "X-XSRF-TOKEN": xsrfToken,
+//             "User-Agent":
+//               "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
+//             Referer: "https://apps.availity.com/public/apps/care-central/",
+//           },
+//         },
+//       )
+
+//       const currentTime = new Date()
+//       console.log(`Retrieved ${response.data.referrals.length} referrals from API`)
+
+//       const newReferrals = response.data.referrals.filter((referral) => {
+//         const requestDate = new Date(referral.requestOn)
+//         return requestDate > lastCheckTime
+//       })
+
+//       console.log(`Found ${newReferrals.length} new referrals since last check`)
+
+//       if (newReferrals.length > 0) {
+//         // Filter out referrals we've already notified about
+//         const unnotifiedReferrals = newReferrals.filter((referral) => !notifiedMemberIds.has(referral.memberID))
+
+//         // Process each new referral
+//         for (const referral of unnotifiedReferrals) {
+//           // Check if referral already exists in database
+//           const existingReferral = await Referral.findOne({
+//             memberID: referral.memberID,
+//             requestOn: referral.requestOn,
+//           })
+
+//           if (!existingReferral) {
+//             // Save the new referral
+//             const savedReferral = await Referral.create({
+//               ...referral,
+//               isNotified: false,
+//             })
+
+//             // Create notification
+//             const notification = await Notification.create({
+//               referralId: savedReferral._id,
+//               memberName: referral.memberName,
+//               memberID: referral.memberID,
+//               message: `New referral for ${referral.memberName} (${referral.serviceName}) received on ${referral.requestOn}`,
+//             })
+
+//             // Send email notification
+//             await sendEmail(
+//               "New Referral Notification",
+//               `New referral received for ${referral.memberName} (ID: ${referral.memberID}).\n\n` +
+//                 `Service: ${referral.serviceName}\n` +
+//                 `Region: ${referral.regionName}\n` +
+//                 `County: ${referral.county}\n` +
+//                 `Plan: ${referral.plan}\n` +
+//                 `Preferred Start Date: ${referral.preferredStartDate}\n` +
+//                 `Status: ${referral.status}`,
+//             )
+
+//             // Send SMS notification
+//             await sendSMS(
+//               `New referral: ${referral.memberName} (${referral.memberID}) for ${referral.serviceName}. Check dashboard for details.`,
+//             )
+
+//             // Mark as notified
+//             savedReferral.isNotified = true
+//             await savedReferral.save()
+
+//             // Add to our notified set
+//             notifiedMemberIds.add(referral.memberID)
+//           }
+//         }
+//       } else {
+//         console.log("No new referrals found in this check")
+//       }
+
+//       // Update last check time
+//       lastCheckTime = currentTime
+//     } catch (axiosError) {
+//       if (axios.isAxiosError(axiosError)) {
+//         const error = axiosError as AxiosError
+
+//         // Check for rate limiting (503 Service Unavailable)
+//         if (error.response && error.response.status === 503) {
+//           console.log("API rate limit exceeded. Will retry after delay.")
+
+//           // Get retry delay from header if available
+//           const retryDelay = error.response?.headers?.["x-availity-api-retry-delay-sec"]
+//           const delayMs = retryDelay ? Number.parseInt(retryDelay as string) * 1000 : API_RETRY_DELAY_MS
+
+//           console.log(`Waiting ${delayMs / 1000} seconds before retrying...`)
+
+//           // Don't throw, just log and continue
+//           return
+//         }
+
+//         // Check for authentication errors
+//         if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+//           console.log("Authentication error. Clearing session and will re-login on next check.")
+
+//           // Clear browser session
+//           await closeBrowser()
+//           browser = null
+//           page = null
+//           isLoggedIn = false
+//           currentFrame = null
+//         }
+
+//         throw error
+//       }
+//       throw axiosError
+//     }
+//   } catch (error) {
+//     console.error("Error checking for new referrals:", error)
+//     throw error
+//   } finally {
+//     // Always remove the request from pending requests
+//     pendingRequests.delete(requestId)
+//   }
+// }
+
+// function extractXsrfToken(cookies: string): string {
+//   const match = cookies.match(/XSRF-TOKEN=([^;]+)/)
+//   return match ? match[1] : ""
+// }
+
+
+export async function checkForNewReferrals(): Promise<void> {
+  const requestId = `api-check-${Date.now()}`;
+
   if (pendingRequests.has(requestId)) {
-    console.log(`API check request ${requestId} is already in progress, skipping`)
-    return
+    console.log(`API check request ${requestId} is already in progress, skipping`);
+    return;
   }
 
-  // Add this request to pending requests
-  pendingRequests.add(requestId)
+  pendingRequests.add(requestId);
+  console.log(`[${new Date().toISOString()}] Starting API-based check for new referrals...`);
 
-  console.log("Starting API-based check for new referrals...")
   try {
-    // Check if browser needs to be restarted
-    // await checkBrowserHealth()
-
-    // Only login if we're not already logged in
     if (!isLoggedIn || !currentFrame) {
-      console.log("Not logged in, initiating login process...")
-      const loginSuccess = await loginToAvaility()
+      console.log("Not logged in, initiating login process...");
+      const loginSuccess = await loginToAvaility();
       if (!loginSuccess) {
-        throw new Error("Failed to login to Availity")
+        throw new Error("Failed to login to Availity");
       }
     } else {
-      console.log("Already logged in, skipping login process")
+      console.log("Already logged in, skipping login process");
     }
 
-    // Get session cookies
-    const cookies = await getSessionCookies()
+    const cookies = await getSessionCookies();
 
-    // Extract XSRF token
-    const xsrfToken = extractXsrfToken(cookies)
+    function extractXsrfToken(cookies: string): string {
+      const match = cookies.match(/XSRF-TOKEN=([^;]+)/);
+      return match ? match[1] : "";
+    }
+    
+    const xsrfToken = extractXsrfToken(cookies);
 
-    // Make API request to fetch referrals
-    console.log("Making API request to fetch referrals...")
-    try {
-      const response = await axios.post<ReferralResponse>(
-        REFERRALS_API_URL,
-        {
-          brand: "WLP",
-          npi: "1184328189",
-          papi: "",
-          state: "TN",
-          tabStatus: "INCOMING",
-          taxId: "922753606",
+    console.log("Making API request to fetch referrals...");
+    const response = await axios.post<ReferralResponse>(
+      REFERRALS_API_URL,
+      { brand: "WLP", npi: "1184328189", state: "TN", tabStatus: "INCOMING", taxId: "922753606" },
+      {
+        headers: {
+          Cookie: cookies,
+          "Content-Type": "application/json",
+          "X-XSRF-TOKEN": xsrfToken,
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
+          Referer: "https://apps.availity.com/public/apps/care-central/",
         },
-        {
-          headers: {
-            Cookie: cookies,
-            "Content-Type": "application/json",
-            "X-XSRF-TOKEN": xsrfToken,
-            "User-Agent":
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
-            Referer: "https://apps.availity.com/public/apps/care-central/",
-          },
-        },
-      )
+      }
+    );
 
-      const currentTime = new Date()
-      console.log(`Retrieved ${response.data.referrals.length} referrals from API`)
+    const currentTime = new Date();
+    console.log(`✅ Retrieved ${response.data.referrals.length} referrals from API`);
 
-      const newReferrals = response.data.referrals.filter((referral) => {
-        const requestDate = new Date(referral.requestOn)
-        return requestDate > lastCheckTime
-      })
+    const newReferrals = response.data.referrals.filter((referral) => {
+      return new Date(referral.requestOn) > lastCheckTime;
+    });
 
-      console.log(`Found ${newReferrals.length} new referrals since last check`)
+    console.log(`🔍 Found ${newReferrals.length} new referrals since last check`);
 
-      if (newReferrals.length > 0) {
-        // Filter out referrals we've already notified about
-        const unnotifiedReferrals = newReferrals.filter((referral) => !notifiedMemberIds.has(referral.memberID))
+    for (const referral of newReferrals) {
+      if (!notifiedMemberIds.has(referral.memberID)) {
+        const existingReferral = await Referral.findOne({ memberID: referral.memberID, requestOn: referral.requestOn });
 
-        // Process each new referral
-        for (const referral of unnotifiedReferrals) {
-          // Check if referral already exists in database
-          const existingReferral = await Referral.findOne({
+        if (!existingReferral) {
+          const savedReferral = await Referral.create({ ...referral, isNotified: false });
+          const notification = await Notification.create({
+            referralId: savedReferral._id,
+            memberName: referral.memberName,
             memberID: referral.memberID,
-            requestOn: referral.requestOn,
-          })
+            message: `New referral for ${referral.memberName} received on ${referral.requestOn}`,
+          });
 
-          if (!existingReferral) {
-            // Save the new referral
-            const savedReferral = await Referral.create({
-              ...referral,
-              isNotified: false,
-            })
+          await sendEmail("New Referral Notification", `New referral for ${referral.memberName} (ID: ${referral.memberID}).`);
+          await sendSMS(`New referral: ${referral.memberName} (${referral.memberID}). Check dashboard for details.`);
 
-            // Create notification
-            const notification = await Notification.create({
-              referralId: savedReferral._id,
-              memberName: referral.memberName,
-              memberID: referral.memberID,
-              message: `New referral for ${referral.memberName} (${referral.serviceName}) received on ${referral.requestOn}`,
-            })
-
-            // Send email notification
-            await sendEmail(
-              "New Referral Notification",
-              `New referral received for ${referral.memberName} (ID: ${referral.memberID}).\n\n` +
-                `Service: ${referral.serviceName}\n` +
-                `Region: ${referral.regionName}\n` +
-                `County: ${referral.county}\n` +
-                `Plan: ${referral.plan}\n` +
-                `Preferred Start Date: ${referral.preferredStartDate}\n` +
-                `Status: ${referral.status}`,
-            )
-
-            // Send SMS notification
-            await sendSMS(
-              `New referral: ${referral.memberName} (${referral.memberID}) for ${referral.serviceName}. Check dashboard for details.`,
-            )
-
-            // Mark as notified
-            savedReferral.isNotified = true
-            await savedReferral.save()
-
-            // Add to our notified set
-            notifiedMemberIds.add(referral.memberID)
-          }
+          savedReferral.isNotified = true;
+          await savedReferral.save();
+          notifiedMemberIds.add(referral.memberID);
         }
-      } else {
-        console.log("No new referrals found in this check")
       }
-
-      // Update last check time
-      lastCheckTime = currentTime
-    } catch (axiosError) {
-      if (axios.isAxiosError(axiosError)) {
-        const error = axiosError as AxiosError
-
-        // Check for rate limiting (503 Service Unavailable)
-        if (error.response && error.response.status === 503) {
-          console.log("API rate limit exceeded. Will retry after delay.")
-
-          // Get retry delay from header if available
-          const retryDelay = error.response?.headers?.["x-availity-api-retry-delay-sec"]
-          const delayMs = retryDelay ? Number.parseInt(retryDelay as string) * 1000 : API_RETRY_DELAY_MS
-
-          console.log(`Waiting ${delayMs / 1000} seconds before retrying...`)
-
-          // Don't throw, just log and continue
-          return
-        }
-
-        // Check for authentication errors
-        if (error.response && (error.response.status === 401 || error.response.status === 403)) {
-          console.log("Authentication error. Clearing session and will re-login on next check.")
-
-          // Clear browser session
-          await closeBrowser()
-          browser = null
-          page = null
-          isLoggedIn = false
-          currentFrame = null
-        }
-
-        throw error
-      }
-      throw axiosError
     }
-  } catch (error) {
-    console.error("Error checking for new referrals:", error)
-    throw error
-  } finally {
-    // Always remove the request from pending requests
-    pendingRequests.delete(requestId)
-  }
-}
 
-function extractXsrfToken(cookies: string): string {
-  const match = cookies.match(/XSRF-TOKEN=([^;]+)/)
-  return match ? match[1] : ""
+    lastCheckTime = currentTime;
+  } catch (error) {
+    console.error("❌ Error checking for new referrals:", error);
+  } finally {
+    pendingRequests.delete(requestId);
+  }
 }
 
 // Function to start the monitoring process
