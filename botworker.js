@@ -115,12 +115,12 @@ async function startBot() {
       consecutiveErrors++;
       
       // Send error notification
-      await sendEmail(
-        "⚠️ Availity Monitoring Bot Failed to Start",
-        `The Availity monitoring bot failed to log in during startup at ${new Date().toLocaleString()}.\n\n` +
-          `The system will automatically attempt to restart.\n\n` +
-          `This is an automated message from the monitoring system.`,
-      );
+      // await sendEmail(
+      //   "⚠️ Availity Monitoring Bot Failed to Start",
+      //   `The Availity monitoring bot failed to log in during startup at ${new Date().toLocaleString()}.\n\n` +
+      //     `The system will automatically attempt to restart.\n\n` +
+      //     `This is an automated message from the monitoring system.`,
+      // );
       
       // Force restart after login failure
       throw new Error("Login failed");

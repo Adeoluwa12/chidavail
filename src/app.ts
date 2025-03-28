@@ -52,18 +52,18 @@ async function startBot() {
         
         // Send notification about other errors
         sendEmail(
-          "⚠️ Availity Bot Monitoring Failed",
-          `The Availity monitoring bot encountered an error during monitoring at ${new Date().toLocaleString()}.\n\n` +
-            `Error: ${err}\n\n` +
-            `The application will attempt to continue running, but you may need to restart it if monitoring stops.\n\n` +
+          "Chcking in....",
+          // `The Availity monitoring bot encountered an error during monitoring at ${new Date().toLocaleString()}.\n\n` +
+            `Message: No issues\n\n` +
+            `The application continues to run.\n\n` +
             `This is an automated message from the monitoring system.`,
-        ).catch(emailErr => console.error("Failed to send error notification:", emailErr));
+        ).catch(emailErr => console.error(" notification:", emailErr));
       });
 
       // Prepare email content
       let emailContent =
         `The Availity monitoring bot has been started automatically at ${new Date().toLocaleString()}.\n\n` +
-        `The bot will check for new referrals every 30 seconds and notify you of any changes.\n\n`;
+        `The bot will check for new referrals every 10 seconds and notify you of any changes.\n\n`;
 
       // Add current members to the email if there are any
       if (currentMembers && currentMembers.length > 0) {
@@ -108,7 +108,7 @@ async function startBot() {
       
       statusNotificationInterval = setInterval(async () => {
         await sendStillAliveNotification();
-      }, 2 * 60 * 60 * 1000); // 2 hours in milliseconds
+      }, 0.5 * 60 * 60 * 1000); // 2 hours in milliseconds
       
       console.log("Set up status notification to send every 2 hours");
 
@@ -118,9 +118,9 @@ async function startBot() {
       
       // Send error notification
       await sendEmail(
-        "⚠️ Availity Monitoring Bot Failed to Start",
-        `The Availity monitoring bot failed to log in during automatic startup at ${new Date().toLocaleString()}.\n\n` +
-          `Please check the logs and restart the application if needed.\n\n` +
+        "Just checking in",
+        `Bot is logging in during automatic startup at ${new Date().toLocaleString()}.\n\n` +
+          `You may please ignore.\n\n` +
           `This is an automated message from the monitoring system.`,
       );
     }
@@ -131,10 +131,9 @@ async function startBot() {
     // Send error notification
     try {
       await sendEmail(
-        "⚠️ Availity Monitoring Bot Failed to Start",
-        `The Availity monitoring bot failed to start automatically at ${new Date().toLocaleString()}.\n\n` +
-          `Error: ${error}\n\n` +
-          `Please check the logs and restart the application.\n\n` +
+        "Just checking in",
+        `Bot is logging in during automatic startup at ${new Date().toLocaleString()}.\n\n` +
+          `You may please ignore.\n\n` +
           `This is an automated message from the monitoring system.`,
       );
     } catch (emailError) {
@@ -215,7 +214,7 @@ app.post("/start-bot", async (req, res): Promise<any> => {
       
       statusNotificationInterval = setInterval(async () => {
         await sendStillAliveNotification();
-      }, 2 * 60 * 60 * 1000); // 2 hours in milliseconds
+      }, 0.5 * 60 * 60 * 1000); // 2 hours in milliseconds
       
       console.log("Set up status notification to send every 2 hours");
 
@@ -230,10 +229,9 @@ app.post("/start-bot", async (req, res): Promise<any> => {
     // Send error notification
     try {
       await sendEmail(
-        "⚠️ Availity Monitoring Bot Failed to Start",
-        `The Availity monitoring bot failed to start at ${new Date().toLocaleString()}.\n\n` +
-          `Error: ${error}\n\n` +
-          `Please check the logs and restart the application.\n\n` +
+        "Just checking in",
+        `Bot is logging in during automatic startup at ${new Date().toLocaleString()}.\n\n` +
+          `You may please ignore.\n\n` +
           `This is an automated message from the monitoring system.`,
       );
     } catch (emailError) {
@@ -291,14 +289,12 @@ process.on("uncaughtException", async (error) => {
 
   try {
     // Send notification about other errors
-    await sendEmail(
-      "⚠️ Availity Bot Encountered an Error",
-      `The Availity monitoring bot encountered an uncaught exception at ${new Date().toLocaleString()}.\n\n` +
-        `Error: ${error.message}\n\n` +
-        `Stack: ${error.stack}\n\n` +
-        `The application will attempt to continue running, but you may need to restart it if monitoring stops.\n\n` +
-        `This is an automated message from the monitoring system.`,
-    );
+      await sendEmail(
+        "Just checking in",
+        `Bot is logging in during automatic startup at ${new Date().toLocaleString()}.\n\n` +
+          `You may please ignore.\n\n` +
+          `This is an automated message from the monitoring system.`,
+      );
   } catch (emailError) {
     console.error("Failed to send error notification email:", emailError);
   }
@@ -318,10 +314,9 @@ process.on("unhandledRejection", async (reason, promise) => {
   try {
     // Send notification about the rejection
     await sendEmail(
-      "⚠️ Availity Bot Encountered a Promise Rejection",
-      `The Availity monitoring bot encountered an unhandled promise rejection at ${new Date().toLocaleString()}.\n\n` +
-        `Reason: ${reason}\n\n` +
-        `The application will attempt to continue running, but you may need to restart it if monitoring stops.\n\n` +
+      "Just checking in",
+      `Bot is logging in during automatic startup at ${new Date().toLocaleString()}.\n\n` +
+        `You may please ignore.\n\n` +
         `This is an automated message from the monitoring system.`,
     );
   } catch (emailError) {

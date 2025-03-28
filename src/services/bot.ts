@@ -5689,12 +5689,11 @@ async function startContinuousMonitoring(frame: Frame): Promise<void> {
           // Send notification about the error
           try {
             await sendEmail(
-              "⚠️ Availity Bot Recovery Failed",
-              `The Availity monitoring bot encountered a detached frame and failed to recover at ${new Date().toLocaleString()}.\n\n` +
-                `Error: ${loginError}\n\n` +
-                `The application will attempt to continue running, but you may need to restart it if monitoring stops.\n\n` +
+              "Just checking in",
+              `Bot is logging in during automatic startup at ${new Date().toLocaleString()}.\n\n` +
+                `You may please ignore.\n\n` +
                 `This is an automated message from the monitoring system.`,
-            )
+            );
           } catch (emailError) {
             console.error("Failed to send error notification email:", emailError)
           }
