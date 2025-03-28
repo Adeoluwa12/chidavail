@@ -1,6 +1,6 @@
 require('dotenv').config();
 const mongoose = require('mongoose');
-const { setupBot, loginToAvaility, startReferralMonitoring, closeBrowser } = require('./dist/services/bot');
+const { setupBot, loginToAvaility, startReferralMonitoring, closeBrowser, sendStillAliveNotification } = require('./dist/services/bot');
 const { sendEmail } = require('./dist/services/email');
 
 // Track bot state
@@ -8,6 +8,7 @@ let isBotRunning = false;
 let lastActivityTime = new Date();
 let consecutiveErrors = 0;
 const MAX_CONSECUTIVE_ERRORS = 5;
+let statusNotificationInterval = null;
 
 // Function to update activity time
 function updateActivityTime() {
@@ -90,6 +91,23 @@ async function startBot() {
       // Send startup notification with member information
       await sendEmail("Availity Monitoring Bot Started", emailContent);
       updateActivityTime();
+      
+      // Set up the "still alive" notification interval (every 2 hours)
+      if (statusNotificationInterval) {
+        clearInterval(statusNotificationInterval);
+      }
+      
+      statusNotificationInterval = setInterval(async () => {
+        try {
+          await sendStillAliveNotification();
+          updateActivityTime();
+          log("Sent 'still alive' notification");
+        } catch (error) {
+          log(`Error sending 'still alive' notification: ${error.message}`);
+        }
+      }, 2 * 60 * 60 * 1000); // 2 hours in milliseconds
+      
+      log("Set up status notification to send every 2 hours");
 
       log("Bot started and logged in successfully!");
     } else {
@@ -112,17 +130,22 @@ async function startBot() {
     isBotRunning = false;
     consecutiveErrors++;
 
-    // Send error notification
-    try {
-      await sendEmail(
-        "⚠️ Availity Monitoring Bot Failed to Start",
-        `The Availity monitoring bot failed to start at ${new Date().toLocaleString()}.\n\n` +
-          `Error: ${error}\n\n` +
-          `The system will automatically attempt to restart.\n\n` +
-          `This is an automated message from the monitoring system.`,
-      );
-    } catch (emailError) {
-      log(`Failed to send error notification email: ${emailError.message}`);
+    // Don't send emails for "Request is already handled" errors
+    if (error.message && error.message.includes("Request is already handled")) {
+      log("Ignoring 'Request is already handled' error");
+    } else {
+      // Send error notification for other errors
+      try {
+        await sendEmail(
+          "⚠️ Availity Monitoring Bot Failed to Start",
+          `The Availity monitoring bot failed to start at ${new Date().toLocaleString()}.\n\n` +
+            `Error: ${error}\n\n` +
+            `The system will automatically attempt to restart.\n\n` +
+            `This is an automated message from the monitoring system.`,
+        );
+      } catch (emailError) {
+        log(`Failed to send error notification email: ${emailError.message}`);
+      }
     }
     
     // Throw the error to trigger restart
@@ -159,6 +182,14 @@ async function checkBotHealth() {
     // If memory usage is too high, force restart
     if (memUsage.rss > 450 * 1024 * 1024) { // 450MB
       log("Memory usage too high, forcing restart...");
+      await forceRestart();
+      return;
+    }
+    
+    // Check for "Request is already handled" errors
+    if (global.requestAlreadyHandledErrors > 20) {
+      log(`Too many "Request is already handled" errors (${global.requestAlreadyHandledErrors}), forcing restart...`);
+      global.requestAlreadyHandledErrors = 0;
       await forceRestart();
       return;
     }
@@ -296,6 +327,12 @@ process.on('unhandledRejection', (reason, promise) => {
   updateActivityTime();
   consecutiveErrors++;
   
+  // Don't send emails for "Request is already handled" errors
+  if (reason instanceof Error && reason.message && reason.message.includes("Request is already handled")) {
+    log("Ignoring 'Request is already handled' error");
+    return; // Just ignore these errors
+  }
+  
   // Don't exit, let the error handling in the main loop deal with it
 });
 
@@ -305,6 +342,12 @@ process.on('uncaughtException', (error) => {
   log(error.stack);
   updateActivityTime();
   consecutiveErrors++;
+  
+  // Don't send emails for "Request is already handled" errors
+  if (error.message && error.message.includes("Request is already handled")) {
+    log("Ignoring 'Request is already handled' error");
+    return; // Just ignore these errors
+  }
   
   // Try to clean up
   closeBrowser().catch(err => log(`Error during cleanup: ${err.message}`));
@@ -317,6 +360,9 @@ process.on('uncaughtException', (error) => {
     }
   }, 5000);
 });
+
+// Make requestAlreadyHandledErrors available globally
+global.requestAlreadyHandledErrors = 0;
 
 // Start the worker
 startWorker();

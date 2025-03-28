@@ -2,7 +2,7 @@ import express from "express"
 import mongoose from "mongoose"
 import path from "path"
 import { config } from "dotenv"
-import { setupBot, loginToAvaility, startReferralMonitoring } from "./services/bot"
+import { setupBot, loginToAvaility, startReferralMonitoring, sendStillAliveNotification } from "./services/bot"
 import { sendEmail } from "./services/email"
 
 // Load environment variables
@@ -18,6 +18,7 @@ app.use(express.static(path.join(__dirname, "public")))
 
 // Track if the bot is running
 let isBotRunning = false
+let statusNotificationInterval: NodeJS.Timeout | null = null;
 
 // Function to start the bot
 async function startBot() {
@@ -43,7 +44,13 @@ async function startBot() {
         console.error("Error in monitoring process:", err);
         isBotRunning = false;
         
-        // Send notification about the error
+        // Don't send notification for "Request is already handled" errors
+        if (err.message && err.message.includes("Request is already handled")) {
+          console.log("Ignoring 'Request is already handled' error");
+          return; // Just ignore these errors
+        }
+        
+        // Send notification about other errors
         sendEmail(
           "⚠️ Availity Bot Monitoring Failed",
           `The Availity monitoring bot encountered an error during monitoring at ${new Date().toLocaleString()}.\n\n` +
@@ -93,6 +100,17 @@ async function startBot() {
 
       // Send startup notification with member information
       await sendEmail("Availity Monitoring Bot Started", emailContent);
+      
+      // Set up the "still alive" notification interval (every 2 hours)
+      if (statusNotificationInterval) {
+        clearInterval(statusNotificationInterval);
+      }
+      
+      statusNotificationInterval = setInterval(async () => {
+        await sendStillAliveNotification();
+      }, 2 * 60 * 60 * 1000); // 2 hours in milliseconds
+      
+      console.log("Set up status notification to send every 2 hours");
 
       console.log("Bot started and logged in successfully!");
     } else {
@@ -189,6 +207,17 @@ app.post("/start-bot", async (req, res): Promise<any> => {
 
       // Send startup notification with member information
       await sendEmail("Availity Monitoring Bot Started", emailContent);
+      
+      // Set up the "still alive" notification interval (every 2 hours)
+      if (statusNotificationInterval) {
+        clearInterval(statusNotificationInterval);
+      }
+      
+      statusNotificationInterval = setInterval(async () => {
+        await sendStillAliveNotification();
+      }, 2 * 60 * 60 * 1000); // 2 hours in milliseconds
+      
+      console.log("Set up status notification to send every 2 hours");
 
       res.status(200).json({ message: "Bot started and logged in successfully!" });
     } else {
@@ -212,6 +241,17 @@ app.post("/start-bot", async (req, res): Promise<any> => {
     }
 
     res.status(500).json({ message: "Failed to start bot.", error: (error as any).message });
+  }
+});
+
+// Route to manually send a "still alive" notification
+app.post("/send-status", async (req, res) => {
+  try {
+    await sendStillAliveNotification();
+    res.status(200).json({ message: "Status notification sent successfully!" });
+  } catch (error) {
+    console.error("Error sending status notification:", error);
+    res.status(500).json({ message: "Failed to send status notification", error: (error as any).message });
   }
 });
 
@@ -243,8 +283,14 @@ mongoose
 process.on("uncaughtException", async (error) => {
   console.error("Uncaught Exception:", error);
 
+  // Don't send emails for "Request is already handled" errors
+  if (error.message && error.message.includes("Request is already handled")) {
+    console.log("Ignoring 'Request is already handled' error");
+    return; // Just ignore these errors
+  }
+
   try {
-    // Send notification about the error
+    // Send notification about other errors
     await sendEmail(
       "⚠️ Availity Bot Encountered an Error",
       `The Availity monitoring bot encountered an uncaught exception at ${new Date().toLocaleString()}.\n\n` +
@@ -262,6 +308,12 @@ process.on("uncaughtException", async (error) => {
 
 process.on("unhandledRejection", async (reason, promise) => {
   console.error("Unhandled Promise Rejection:", reason);
+
+  // Don't send emails for "Request is already handled" errors
+  if (reason instanceof Error && reason.message && reason.message.includes("Request is already handled")) {
+    console.log("Ignoring 'Request is already handled' error");
+    return; // Just ignore these errors
+  }
 
   try {
     // Send notification about the rejection

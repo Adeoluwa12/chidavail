@@ -6,7 +6,7 @@
 
   "scripts": {
     "build": "tsc && cp botworker.js dist/",
-    "postbuild": "copyfiles -u 1 \"src/public//*\" dist",
+    "postbuild": "copyfiles -u 1 \"src/public/**/*\" dist",
     "start": "npx puppeteer browsers install chrome && node botworker.js",
     "dev": "ts-node src/app.ts",
     "clean": "rm -rf dist",
