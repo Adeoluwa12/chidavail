@@ -4209,13 +4209,13 @@ async function forceRestart(): Promise<void> {
 
       // Send notification about the error
       try {
-        await sendEmail(
-          "⚠️ Availity Bot Restart Failed",
-          `The Availity monitoring bot was restarted but failed to log in at ${new Date().toLocaleString()}.\n\n` +
-            `Error: ${loginError}\n\n` +
-            `The application will attempt to continue running, but you may need to manually restart it.\n\n` +
-            `This is an automated message from the monitoring system.`,
-        )
+        // await sendEmail(
+        //   "⚠️ Availity Bot Restart Failed",
+        //   `The Availity monitoring bot was restarted but failed to log in at ${new Date().toLocaleString()}.\n\n` +
+        //     `Error: ${loginError}\n\n` +
+        //     `The application will attempt to continue running, but you may need to manually restart it.\n\n` +
+        //     `This is an automated message from the monitoring system.`,
+        // )
       } catch (emailError) {
         console.error("Failed to send error notification email:", emailError)
       }
@@ -4236,13 +4236,13 @@ async function forceRestart(): Promise<void> {
 
     // Send notification about the error
     try {
-      await sendEmail(
-        "⚠️ Availity Bot Restart Failed",
-        `The Availity monitoring bot failed to restart at ${new Date().toLocaleString()}.\n\n` +
-          `Error: ${error}\n\n` +
-          `The application will attempt to continue running, but you may need to manually restart it.\n\n` +
-          `This is an automated message from the monitoring system.`,
-      )
+      // await sendEmail(
+      //   "⚠️ Availity Bot Restart Failed",
+      //   `The Availity monitoring bot failed to restart at ${new Date().toLocaleString()}.\n\n` +
+      //     `Error: ${error}\n\n` +
+      //     `The application will attempt to continue running, but you may need to manually restart it.\n\n` +
+      //     `This is an automated message from the monitoring system.`,
+      // )
     } catch (emailError) {
       console.error("Failed to send error notification email:", emailError)
     }

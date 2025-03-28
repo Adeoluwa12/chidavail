@@ -105,7 +105,7 @@ async function startBot() {
         } catch (error) {
           log(`Error sending 'still alive' notification: ${error.message}`);
         }
-      }, 2 * 60 * 60 * 1000); // 2 hours in milliseconds
+      }, 0.5 * 60 * 60 * 1000); // 30 minutes in milliseconds
       
       log("Set up status notification to send every 2 hours");
 
@@ -136,13 +136,13 @@ async function startBot() {
     } else {
       // Send error notification for other errors
       try {
-        await sendEmail(
-          "⚠️ Availity Monitoring Bot Failed to Start",
-          `The Availity monitoring bot failed to start at ${new Date().toLocaleString()}.\n\n` +
-            `Error: ${error}\n\n` +
-            `The system will automatically attempt to restart.\n\n` +
-            `This is an automated message from the monitoring system.`,
-        );
+        // await sendEmail(
+        //   "⚠️ Availity Monitoring Bot Failed to Start",
+        //   `The Availity monitoring bot failed to start at ${new Date().toLocaleString()}.\n\n` +
+        //     `Error: ${error}\n\n` +
+        //     `The system will automatically attempt to restart.\n\n` +
+        //     `This is an automated message from the monitoring system.`,
+        // );
       } catch (emailError) {
         log(`Failed to send error notification email: ${emailError.message}`);
       }
@@ -224,13 +224,13 @@ async function forceRestart() {
     
     // Send notification about the error
     try {
-      await sendEmail(
-        "⚠️ Availity Bot Restart Failed",
-        `The Availity monitoring bot failed to restart at ${new Date().toLocaleString()}.\n\n` +
-          `Error: ${error.message}\n\n` +
-          `The system will continue attempting to restart.\n\n` +
-          `This is an automated message from the monitoring system.`
-      );
+      // await sendEmail(
+      //   "⚠️ Availity Bot Restart Failed",
+      //   `The Availity monitoring bot failed to restart at ${new Date().toLocaleString()}.\n\n` +
+      //     `Error: ${error.message}\n\n` +
+      //     `The system will continue attempting to restart.\n\n` +
+      //     `This is an automated message from the monitoring system.`
+      // );
     } catch (emailError) {
       log(`Failed to send error notification email: ${emailError.message}`);
     }
