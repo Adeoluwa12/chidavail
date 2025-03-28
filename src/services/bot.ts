@@ -32,7 +32,7 @@ const TOTP_SECRET = process.env.TOTP_SECRET || "RU4SZCAW4UESMUQNCG3MXTWKXA"
 const MONITORING_INTERVAL_MS = 30000 // 30 seconds
 const API_RETRY_DELAY_MS = 60000 // 60 seconds (based on Availity's retry header)
 const MAX_RETRIES = 5 // Maximum number of retries for operations
-const BROWSER_RESTART_INTERVAL_MS = 3600000 // 1 hour - restart browser periodically to prevent memory leaks
+// const BROWSER_RESTART_INTERVAL_MS = 3600000 // 1 hour - restart browser periodically to prevent memory leaks
 
 // Interfaces
 interface ReferralResponse {
@@ -127,40 +127,40 @@ export async function closeBrowser(): Promise<void> {
   }
 }
 
-// Check if browser needs to be restarted periodically to prevent memory leaks
-async function checkBrowserHealth(): Promise<void> {
-  const now = new Date()
-  const timeSinceLastRestart = now.getTime() - lastRestartTime.getTime()
+// // Check if browser needs to be restarted periodically to prevent memory leaks
+// async function checkBrowserHealth(): Promise<void> {
+//   const now = new Date()
+//   const timeSinceLastRestart = now.getTime() - lastRestartTime.getTime()
   
-  if (timeSinceLastRestart > BROWSER_RESTART_INTERVAL_MS) {
-    console.log("Performing scheduled browser restart to prevent memory leaks...")
+//   if (timeSinceLastRestart > BROWSER_RESTART_INTERVAL_MS) {
+//     console.log("Performing scheduled browser restart to prevent memory leaks...")
     
-    // Save current state
-    const wasMonitoring = isMonitoring
+//     // Save current state
+//     const wasMonitoring = isMonitoring
     
-    // Stop monitoring
-    if (monitoringInterval) {
-      clearInterval(monitoringInterval)
-      monitoringInterval = null
-    }
+//     // Stop monitoring
+//     if (monitoringInterval) {
+//       clearInterval(monitoringInterval)
+//       monitoringInterval = null
+//     }
     
-    isMonitoring = false
-    isLoggedIn = false
+//     isMonitoring = false
+//     isLoggedIn = false
     
-    // Close and restart browser
-    await closeBrowser()
-    await setupBot()
+//     // Close and restart browser
+//     await closeBrowser()
+//     await setupBot()
     
-    // Restore monitoring if it was active
-    if (wasMonitoring) {
-      await loginToAvaility()
-    }
+//     // Restore monitoring if it was active
+//     if (wasMonitoring) {
+//       await loginToAvaility()
+//     }
     
-    // Update restart time
-    lastRestartTime = new Date()
-    console.log("Scheduled browser restart completed successfully")
-  }
-}
+//     // Update restart time
+//     lastRestartTime = new Date()
+//     console.log("Scheduled browser restart completed successfully")
+//   }
+// }
 
 export async function setupBot(): Promise<void> {
   try {
@@ -345,7 +345,7 @@ export async function loginToAvaility(): Promise<boolean> {
 
   try {
     // Check if browser needs to be restarted
-    await checkBrowserHealth()
+    // await checkBrowserHealth()
     
     // Check if we're already logged in and have a valid frame for monitoring
     if (isLoggedIn && currentFrame) {
@@ -1353,7 +1353,7 @@ async function startContinuousMonitoring(frame: Frame): Promise<void> {
       console.log("Checking for new referrals...");
       
       // Check if browser needs to be restarted
-      await checkBrowserHealth();
+      // await checkBrowserHealth();
       
       // Create a unique request ID for this monitoring check
       const requestId = `monitor-${Date.now()}`;
@@ -1603,7 +1603,7 @@ export async function checkForNewReferrals(): Promise<void> {
   console.log("Starting API-based check for new referrals...")
   try {
     // Check if browser needs to be restarted
-    await checkBrowserHealth();
+    // await checkBrowserHealth();
     
     // Only login if we're not already logged in
     if (!isLoggedIn || !currentFrame) {
