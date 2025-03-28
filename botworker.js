@@ -366,3 +366,57 @@ global.requestAlreadyHandledErrors = 0;
 
 // Start the worker
 startWorker();
+
+
+
+// // Import required modules
+// const { startReferralMonitoring, sendStillAliveNotification } = require("./dist/services/bot")
+// const { startHealthServer } = require("./dist/services/health-check")
+// const { startFallbackMonitoring } = require("./dist/services/api-monitor")
+// const { getBrowser } = require("./dist/services/browser-manager")
+
+// // Change the "still alive" notification interval from 2 hours to 1 hour
+
+// // Set up interval for "still alive" notifications (every 1 hour)
+// const STILL_ALIVE_INTERVAL_MS = 3600000 // 1 hour (changed from 7200000 / 2 hours)
+
+// // Start the health check server
+// startHealthServer(process.env.PORT || 7009 )
+
+// // Main function to start the bot
+// async function startBot() {
+//   console.log("Starting Availity monitoring bot...")
+
+//   try {
+//     // First check if we can launch a browser
+//     const browserSetup = await getBrowser()
+
+//     if (browserSetup) {
+//       console.log("Browser launched successfully, starting full monitoring...")
+//       // Start the full monitoring with browser
+//       await startReferralMonitoring()
+//     } else {
+//       console.log("Unable to launch browser, starting fallback monitoring...")
+//       // Start fallback monitoring without browser
+//       await startFallbackMonitoring()
+//     }
+
+//     // Set up "still alive" notifications
+//     setInterval(async () => {
+//       try {
+//         await sendStillAliveNotification()
+//       } catch (error) {
+//         console.error("Error sending still alive notification:", error)
+//       }
+//     }, STILL_ALIVE_INTERVAL_MS)
+
+//     console.log("Bot startup complete")
+//   } catch (error) {
+//     console.error("Error starting bot:", error)
+//     process.exit(1)
+//   }
+// }
+
+// // Start the bot
+// startBot()
+
