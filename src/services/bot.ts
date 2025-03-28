@@ -3999,18 +3999,43 @@ async function retryOperation(operation: () => Promise<void>, retries = MAX_RETR
 
 // Helper function to temporarily disable request interception
 async function withoutInterception<T>(page: Page, fn: () => Promise<T>): Promise<T> {
-  // Disable interception
-  await page.setRequestInterception(false);
+  // Check if interception is enabled before trying to disable it
+  let wasEnabled = false;
+  
+  try {
+    // Check if interception is enabled using a safe method
+    wasEnabled = await page.evaluate(() => {
+      // @ts-ignore - accessing internal property for checking
+      return !!window['_puppeteer']?.network?._requestInterceptionEnabled;
+    }).catch(() => false);
+  } catch (error) {
+    console.log("Error checking interception status:", error);
+    wasEnabled = false;
+  }
+  
+  // Only disable if it was enabled
+  if (wasEnabled) {
+    try {
+      await page.setRequestInterception(false);
+      console.log("Request interception disabled temporarily");
+    } catch (error) {
+      console.error("Error disabling request interception:", error);
+      // Continue anyway
+    }
+  }
   
   try {
     // Run the function
     return await fn();
   } finally {
-    // Re-enable interception
-    try {
-      await page.setRequestInterception(true);
-    } catch (error) {
-      console.error("Error re-enabling request interception:", error);
+    // Re-enable interception only if it was enabled before
+    if (wasEnabled) {
+      try {
+        await page.setRequestInterception(true);
+        console.log("Request interception re-enabled");
+      } catch (error) {
+        console.error("Error re-enabling request interception:", error);
+      }
     }
   }
 }
@@ -4233,45 +4258,60 @@ export async function setupBot(): Promise<void> {
     await page.setDefaultNavigationTimeout(50000)
     await page.setDefaultTimeout(50000)
 
-    // Enable request interception to optimize performance
-    await page.setRequestInterception(true)
-    page.on("request", (request) => {
-      // Use a more targeted approach to request interception
-      try {
-        const url = request.url();
-        const resourceType = request.resourceType();
-        
-        // Only abort specific resource types or URLs
-        if (
-          resourceType === "image" || 
-          resourceType === "font" || 
-          resourceType === "media" ||
-          url.includes('.jpg') || 
-          url.includes('.png') || 
-          url.includes('.gif') || 
-          url.includes('.woff')
-        ) {
-          // For resources we want to block
-          if (!request.isInterceptResolutionHandled()) {
-            request.abort();
+    // Enable request interception to optimize performance - with better error handling
+    try {
+      await page.setRequestInterception(true)
+      console.log("Request interception enabled successfully");
+      
+      page.on("request", (request) => {
+        // Use a more targeted approach to request interception
+        try {
+          if (request.isInterceptResolutionHandled()) {
+            return; // Skip if already handled
           }
-        } else {
-          // For resources we want to allow
-          if (!request.isInterceptResolutionHandled()) {
+          
+          const url = request.url();
+          const resourceType = request.resourceType();
+          
+          // Only abort specific resource types or URLs
+          if (
+            resourceType === "image" || 
+            resourceType === "font" || 
+            resourceType === "media" ||
+            url.includes('.jpg') || 
+            url.includes('.png') || 
+            url.includes('.gif') || 
+            url.includes('.woff')
+          ) {
+            // For resources we want to block
+            request.abort();
+          } else {
+            // For resources we want to allow
             request.continue();
           }
+        } catch (error) {
+          // If request is already handled, just log and continue
+          if (error instanceof Error && error.message.includes("Request is already handled")) {
+            console.log("Request is already handled, ignoring");
+            requestAlreadyHandledErrors++;
+          } else {
+            console.error("Error handling request:", error);
+            // Try to continue the request if possible
+            try {
+              if (!request.isInterceptResolutionHandled()) {
+                request.continue();
+              }
+            } catch (continueError) {
+              // Just log, don't crash
+              console.error("Error continuing request:", continueError);
+            }
+          }
         }
-      } catch (error) {
-        // If request is already handled, just log and continue
-        if (error instanceof Error && error.message.includes("Request is already handled")) {
-          console.log("Request is already handled, ignoring");
-          requestAlreadyHandledErrors++;
-        } else {
-          console.error("Error handling request:", error);
-          // Don't try to abort or continue as it might cause another error
-        }
-      }
-    })
+      })
+    } catch (interceptError) {
+      console.error("Failed to enable request interception:", interceptError);
+      // Continue without interception
+    }
 
     // Set up error handler for the page
     page.on('error', (err) => {
@@ -4405,10 +4445,17 @@ export async function loginToAvaility(): Promise<boolean> {
     }
 
     console.log("Navigating to Availity login page...")
-    // Use withoutInterception for navigation
-    await withoutInterception(page!, async () => {
-      await page!.goto(LOGIN_URL, { waitUntil: "networkidle2" });
-    });
+    
+    // Navigate without using interception
+    try {
+      await page.goto(LOGIN_URL, { waitUntil: "networkidle2" });
+    } catch (navError) {
+      console.error("Navigation error:", navError);
+      // Try again with a different approach
+      await page.goto(LOGIN_URL, { waitUntil: "domcontentloaded" });
+      // Wait a bit for the page to stabilize
+      await delay(5000);
+    }
 
     // Enter username and password
     console.log("Entering credentials...")
@@ -4421,9 +4468,7 @@ export async function loginToAvaility(): Promise<boolean> {
     // Wait for either navigation to complete or for 2FA form to appear
     try {
       await Promise.race([
-        withoutInterception(page!, async () => {
-          await page!.waitForNavigation({ timeout: 50000 });
-        }),
+        page!.waitForNavigation({ timeout: 50000 }),
         safeOperation(() => page!.waitForSelector('form[name="backupCodeForm"]', { timeout: 50000 }), null),
         safeOperation(() => page!.waitForSelector('form[name="authenticatorCodeForm"]', { timeout: 50000 }), null),
         safeOperation(() => page!.waitForSelector(".top-applications", { timeout: 50000 }), null),
@@ -4623,12 +4668,8 @@ async function handle2FA(page: Page): Promise<void> {
         if (submitButton) {
           await Promise.all([
             safeOperation(() => submitButton.click(), null),
-            withoutInterception(page, async () => {
-              try {
-                await page.waitForNavigation({ waitUntil: "networkidle2", timeout: 40000 });
-              } catch (navError) {
-                // Navigation timeout after submitting code, but this might be expected
-              }
+            page.waitForNavigation({ waitUntil: "networkidle2", timeout: 40000 }).catch(err => {
+              console.log("Navigation timeout after submitting code, but this might be expected");
             }),
           ])
           submitButtonClicked = true
@@ -4789,6 +4830,8 @@ async function navigateToCareCentral(page: Page): Promise<void> {
   try {
     // Wait for the dashboard to load
     await safeOperation(() => page.waitForSelector("body", { timeout: 50000, visible: true }), null)
+
+    // Wait for a bit to ensure the page is fully loaded  { timeout: 50000, visible: true }), null)
 
     // Wait for a bit to ensure the page is fully loaded
     await delay(1000)
@@ -5053,13 +5096,12 @@ async function navigateToCareCentral(page: Page): Promise<void> {
     await safeOperation(() => newBodyFrame.click("button.btn.btn-primary"), null)
 
     // Wait for navigation
-    await withoutInterception(page, async () => {
-      try {
-        await page.waitForNavigation({ waitUntil: "networkidle0", timeout: 30000 });
-      } catch (navError) {
-        // Navigation timeout after Next, but this might be expected
-      }
-    });
+    try {
+      await page.waitForNavigation({ waitUntil: "networkidle0", timeout: 30000 });
+    } catch (navError) {
+      // Navigation timeout after Next, but this might be expected
+      console.log("Navigation timeout after clicking Next, continuing anyway");
+    }
 
     // Now we need to click on the Referrals button inside the iframe
     // Get the updated frames after navigation
@@ -5681,8 +5723,7 @@ export async function checkForNewReferrals(): Promise<void> {
             Cookie: cookies,
             "Content-Type": "application/json",
             "X-XSRF-TOKEN": xsrfToken,
-            "User-Agent":
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
             Referer: "https://apps.availity.com/public/apps/care-central/",
           },
         }
@@ -6032,3 +6073,4 @@ export async function sendStillAliveNotification(): Promise<void> {
     console.error("Failed to send 'still alive' notification:", error);
   }
 }
+
