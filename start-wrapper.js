@@ -1,19 +1,10 @@
-
-
-// // Set environment variable to indicate manual start is required
-// process.env.MANUAL_START_ONLY = "true"
-
-// // Run the actual app
-// require("./dist/app.js")
-
-
 const { spawn } = require("child_process")
 const fs = require("fs")
 const path = require("path")
 const { exec } = require("child_process")
 
 // Configuration
-const MAX_RUNTIME_MS = 110 * 60 * 1000 // 1 hour 50 minutes
+const MAX_RUNTIME_MS = 60 * 60 * 1000 // 1 hour exactly
 const RESTART_DELAY_MS = 60000 // 1 minute
 const LOG_FILE = path.join(__dirname, "bot-restarts.log")
 
@@ -43,9 +34,9 @@ function startBot() {
     env: process.env,
   })
 
-  // Set up the shutdown timer
+  // Set up the shutdown timer - EXACTLY 1 HOUR
   shutdownTimer = setTimeout(() => {
-    logRestart(`Maximum runtime of ${MAX_RUNTIME_MS / 60000} minutes reached. Shutting down for restart...`)
+    logRestart(`Maximum runtime of 60 minutes reached. Shutting down for restart...`)
 
     if (botProcess) {
       // Send SIGTERM to allow graceful shutdown
@@ -120,3 +111,4 @@ process.on("SIGTERM", () => {
 
 // Start the bot
 startBot()
+
