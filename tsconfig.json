@@ -13,7 +13,7 @@
     "moduleResolution": "node"
   },
   
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "src/botworker.ts"],
   "exclude": ["node_modules", "**/*.spec.ts"]
 }
 
