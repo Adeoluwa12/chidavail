@@ -3861,10 +3861,10 @@ async function startContinuousMonitoring(frame: Frame): Promise<void> {
           // Send notification about the error
           try {
             await sendEmail(
-              "⚠️ Availity Bot Recovery Failed",
-              `The Availity monitoring bot encountered a detached frame and failed to recover at ${new Date().toLocaleString()}.\n\n` +
-                `Error: ${loginError}\n\n` +
-                `The application will attempt to continue running, but you may need to restart it if monitoring stops.\n\n` +
+              "Availity Bot Recovery",
+              `The Availity monitoring bot needs to briefly restart ${new Date().toLocaleString()}.\n\n` +
+                `You can just ignore: ${loginError}\n\n` +
+                `The application will restart and continue monitoring.\n\n` +
                 `This is an automated message from the monitoring system.`,
             )
           } catch (emailError) {
@@ -4136,9 +4136,9 @@ export async function startReferralMonitoring(): Promise<void> {
   // Send startup notification
   try {
     await sendEmail(
-      "Availity Monitoring Bot Started",
+      "Availity Monitoring Bot Active",
       `The Availity monitoring bot has been started at ${new Date().toISOString()}.\n\n` +
-        "The bot will check for new referrals every 30 seconds and notify you when new members are detected.",
+        "The bot will check for new referrals every 10 seconds and notify you when new members are detected.",
     )
   } catch (error) {
     console.error("Failed to send startup notification:", error)
@@ -4329,7 +4329,7 @@ export async function sendStillAliveNotification(): Promise<void> {
     const message =
       `Hi, just wanted to let you know I'm still active, up and running!\n\n` +
       `Current time: ${new Date().toLocaleString()}\n` +
-      `Bot uptime: ${uptimeHours} hours, ${uptimeMinutes} minutes\n` +
+      // `Bot uptime: ${uptimeHours} hours, ${uptimeMinutes} minutes\n` +
       `Bot version: ${BOT_VERSION}\n\n` +
       `Current status:\n` +
       `- Browser initialized: ${browser !== null}\n` +
