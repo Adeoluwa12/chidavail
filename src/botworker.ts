@@ -14,12 +14,12 @@ async function startBot() {
 
   try {
     // Send startup notification
-    await sendEmail(
-      "Availity Monitoring Bot Started",
-      `The Availity monitoring bot has been started at ${new Date().toLocaleString()}.\n\n` +
-        `The bot will check for new referrals every 10 seconds and notify you when new members are detected.\n\n` +
-        `This is an automated message from the monitoring system.`,
-    )
+    // await sendEmail(
+    //   "Availity Monitoring Bot Started",
+    //   `The Availity monitoring bot has been started at ${new Date().toLocaleString()}.\n\n` +
+    //     `The bot will check for new referrals every 10 seconds and notify you when new members are detected.\n\n` +
+    //     `This is an automated message from the monitoring system.`,
+    // )
 
     // Initialize the bot
     await setupBot()
