@@ -1762,7 +1762,7 @@ async function processNewMembers(members: MemberData[]): Promise<void> {
       notifiedMemberIds.add(member.memberID)
     })
 
-    // await sendEmail("New Availity Referrals Detected", emailContent)
+    await sendEmail("New Availity Referrals Detected", emailContent)
     console.log("Email notification sent for new members")
 
     // Send SMS for each new member
