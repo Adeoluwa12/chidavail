@@ -1469,14 +1469,14 @@ async function extractMembersFromFrame(frame: Frame): Promise<MemberData[]> {
 }
 
 // Function to send email with member information
-async function sendMemberInformationEmail(members: MemberData[]): Promise<void> {
-  try {
-    // We're removing this email notification as requested
-    console.log("Skipping initial members email notification as requested")
-  } catch (error) {
-    console.error("Error in sendMemberInformationEmail:", error)
-  }
-}
+// async function sendMemberInformationEmail(members: MemberData[]): Promise<void> {
+//   try {
+//     // We're removing this email notification as requested
+//     console.log("Skipping initial members email notification as requested")
+//   } catch (error) {
+//     console.error("Error in sendMemberInformationEmail:", error)
+//   }
+// }
 
 // Function to save members to database
 async function saveMembersToDatabase(members: MemberData[]): Promise<void> {
