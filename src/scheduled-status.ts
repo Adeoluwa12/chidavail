@@ -1,11 +1,17 @@
 // import * as fs from "fs"
 // import * as path from "path"
 
+// // Define a more robust tracking system for sent notifications
+// interface LastSentRecord {
+//   timestamp: string
+//   date: string // Store just the date portion for easy comparison
+// }
+
 // // Extend the global namespace to include our custom properties
 // declare global {
 //   namespace NodeJS {
 //     interface Global {
-//       lastSentTimes: Record<string, string>
+//       lastSentTimes: Record<string, LastSentRecord>
 //     }
 //   }
 // }
@@ -53,20 +59,30 @@
 
 //     // Schedule the initial email
 //     const initialTimeout = setTimeout(() => {
-//       console.log(`Sending scheduled ${time.name} status email`)
-//       sendStatusFn().catch((err) => console.error(`Error sending ${time.name} status email:`, err))
+//       // Check if we've already sent this notification today
+//       if (!hasAlreadySentToday(time.name)) {
+//         console.log(`Sending scheduled ${time.name} status email`)
+//         sendStatusFn().catch((err) => console.error(`Error sending ${time.name} status email:`, err))
 
-//       // Save the last sent time to persistent storage
-//       saveLastSentTime(time.name)
+//         // Save the last sent time to persistent storage
+//         saveLastSentTime(time.name)
+//       } else {
+//         console.log(`Already sent ${time.name} status email today, skipping`)
+//       }
 
 //       // Then schedule it to repeat every 24 hours
 //       const dailyInterval = setInterval(
 //         () => {
-//           console.log(`Sending daily ${time.name} status email`)
-//           sendStatusFn().catch((err) => console.error(`Error sending ${time.name} status email:`, err))
+//           // Always check if we've already sent today before sending
+//           if (!hasAlreadySentToday(time.name)) {
+//             console.log(`Sending daily ${time.name} status email`)
+//             sendStatusFn().catch((err) => console.error(`Error sending ${time.name} status email:`, err))
 
-//           // Save the last sent time to persistent storage
-//           saveLastSentTime(time.name)
+//             // Save the last sent time to persistent storage
+//             saveLastSentTime(time.name)
+//           } else {
+//             console.log(`Already sent ${time.name} status email today, skipping`)
+//           }
 //         },
 //         24 * 60 * 60 * 1000,
 //       )
@@ -93,22 +109,23 @@
 
 //     // Check each scheduled time
 //     for (const time of scheduledTimes) {
-//       const lastSentTime = getLastSentTime(time.name)
+//       // Skip if we've already sent this notification today
+//       if (hasAlreadySentToday(time.name)) {
+//         console.log(`Already sent ${time.name} status email today, skipping missed email check`)
+//         continue
+//       }
 
-//       // If we have no record of sending this email today, check if we missed it
-//       if (!lastSentTime || !isSameDay(new Date(lastSentTime), now)) {
-//         // Create a date object for today's scheduled time
-//         const scheduledTime = new Date(now)
-//         scheduledTime.setHours(time.hour, time.minute, 0, 0)
+//       // Create a date object for today's scheduled time
+//       const scheduledTime = new Date(now)
+//       scheduledTime.setHours(time.hour, time.minute, 0, 0)
 
-//         // If the scheduled time has passed today but we haven't sent the email yet
-//         if (scheduledTime < now && scheduledTime.getDate() === now.getDate()) {
-//           console.log(`Detected missed ${time.name} status email. Sending now...`)
-//           await sendStatusFn()
+//       // If the scheduled time has passed today but we haven't sent the email yet
+//       if (scheduledTime < now && scheduledTime.getDate() === now.getDate()) {
+//         console.log(`Detected missed ${time.name} status email. Sending now...`)
+//         await sendStatusFn()
 
-//           // Save the last sent time
-//           saveLastSentTime(time.name)
-//         }
+//         // Save the last sent time
+//         saveLastSentTime(time.name)
 //       }
 //     }
 //   } catch (error) {
@@ -116,20 +133,35 @@
 //   }
 // }
 
-// // Helper function to check if two dates are on the same day
-// function isSameDay(date1: Date, date2: Date): boolean {
-//   return (
-//     date1.getFullYear() === date2.getFullYear() &&
-//     date1.getMonth() === date2.getMonth() &&
-//     date1.getDate() === date2.getDate()
-//   )
+// // Helper function to check if we've already sent a notification today
+// function hasAlreadySentToday(timeName: string): boolean {
+//   try {
+//     const record = getLastSentTime(timeName)
+//     if (!record) return false
+
+//     // Get today's date in YYYY-MM-DD format
+//     const today = new Date().toISOString().split("T")[0]
+
+//     // Compare with the stored date
+//     return record.date === today
+//   } catch (error) {
+//     console.error(`Error checking if ${timeName} notification was sent today:`, error)
+//     return false
+//   }
 // }
 
 // // Function to save the last sent time to persistent storage
 // function saveLastSentTime(timeName: string): void {
 //   try {
+//     const now = new Date()
+//     // Create a record with both timestamp and date
+//     const record: LastSentRecord = {
+//       timestamp: now.toISOString(),
+//       date: now.toISOString().split("T")[0], // Just the YYYY-MM-DD part
+//     }
+
 //     // Use a global object to store the last sent times in memory
-//     ;(global as any).lastSentTimes[timeName] = new Date().toISOString()
+//     ;(global as any).lastSentTimes[timeName] = record
 
 //     // Also save to file system for persistence across restarts
 //     const dataDir = path.join(__dirname, "../data")
@@ -141,14 +173,14 @@
 //     const filePath = path.join(dataDir, "last-sent-times.json")
 //     fs.writeFileSync(filePath, JSON.stringify((global as any).lastSentTimes, null, 2))
 
-//     console.log(`Saved last sent time for ${timeName}: ${(global as any).lastSentTimes[timeName]}`)
+//     console.log(`Saved last sent time for ${timeName}: ${record.timestamp} (date: ${record.date})`)
 //   } catch (error) {
 //     console.error(`Error saving last sent time for ${timeName}:`, error)
 //   }
 // }
 
 // // Function to get the last sent time from persistent storage
-// function getLastSentTime(timeName: string): string | null {
+// function getLastSentTime(timeName: string): LastSentRecord | null {
 //   try {
 //     // Try to get from memory first
 //     if ((global as any).lastSentTimes && (global as any).lastSentTimes[timeName]) {
@@ -182,30 +214,7 @@
 // }
 
 
-
-
-import * as fs from "fs"
-import * as path from "path"
-
-// Define a more robust tracking system for sent notifications
-interface LastSentRecord {
-  timestamp: string
-  date: string // Store just the date portion for easy comparison
-}
-
-// Extend the global namespace to include our custom properties
-declare global {
-  namespace NodeJS {
-    interface Global {
-      lastSentTimes: Record<string, LastSentRecord>
-    }
-  }
-}
-
-// Initialize the global object if it doesn't exist
-if (!(global as any).lastSentTimes) {
-  ;(global as any).lastSentTimes = {}
-}
+import { StatusLog } from "../src/models/status-log"
 
 // Function to schedule status emails at specific times of day
 export function scheduleStatusEmails(sendStatusFn: () => Promise<void>): NodeJS.Timeout[] {
@@ -244,28 +253,34 @@ export function scheduleStatusEmails(sendStatusFn: () => Promise<void>): NodeJS.
     const msUntil = scheduledTime.getTime() - now.getTime()
 
     // Schedule the initial email
-    const initialTimeout = setTimeout(() => {
-      // Check if we've already sent this notification today
-      if (!hasAlreadySentToday(time.name)) {
+    const initialTimeout = setTimeout(async () => {
+      // Check if we've already sent this notification today using the database
+      if (!(await hasAlreadySentToday(time.name))) {
         console.log(`Sending scheduled ${time.name} status email`)
-        sendStatusFn().catch((err) => console.error(`Error sending ${time.name} status email:`, err))
-
-        // Save the last sent time to persistent storage
-        saveLastSentTime(time.name)
+        try {
+          await sendStatusFn()
+          // Save the last sent time to database
+          await saveStatusLog(time.name)
+        } catch (err) {
+          console.error(`Error sending ${time.name} status email:`, err)
+        }
       } else {
         console.log(`Already sent ${time.name} status email today, skipping`)
       }
 
       // Then schedule it to repeat every 24 hours
       const dailyInterval = setInterval(
-        () => {
+        async () => {
           // Always check if we've already sent today before sending
-          if (!hasAlreadySentToday(time.name)) {
+          if (!(await hasAlreadySentToday(time.name))) {
             console.log(`Sending daily ${time.name} status email`)
-            sendStatusFn().catch((err) => console.error(`Error sending ${time.name} status email:`, err))
-
-            // Save the last sent time to persistent storage
-            saveLastSentTime(time.name)
+            try {
+              await sendStatusFn()
+              // Save the last sent time to database
+              await saveStatusLog(time.name)
+            } catch (err) {
+              console.error(`Error sending ${time.name} status email:`, err)
+            }
           } else {
             console.log(`Already sent ${time.name} status email today, skipping`)
           }
@@ -296,7 +311,7 @@ async function checkForMissedEmails(sendStatusFn: () => Promise<void>): Promise<
     // Check each scheduled time
     for (const time of scheduledTimes) {
       // Skip if we've already sent this notification today
-      if (hasAlreadySentToday(time.name)) {
+      if (await hasAlreadySentToday(time.name)) {
         console.log(`Already sent ${time.name} status email today, skipping missed email check`)
         continue
       }
@@ -308,10 +323,13 @@ async function checkForMissedEmails(sendStatusFn: () => Promise<void>): Promise<
       // If the scheduled time has passed today but we haven't sent the email yet
       if (scheduledTime < now && scheduledTime.getDate() === now.getDate()) {
         console.log(`Detected missed ${time.name} status email. Sending now...`)
-        await sendStatusFn()
-
-        // Save the last sent time
-        saveLastSentTime(time.name)
+        try {
+          await sendStatusFn()
+          // Save the last sent time to database
+          await saveStatusLog(time.name)
+        } catch (error) {
+          console.error(`Error sending missed ${time.name} status email:`, error)
+        }
       }
     }
   } catch (error) {
@@ -319,82 +337,32 @@ async function checkForMissedEmails(sendStatusFn: () => Promise<void>): Promise<
   }
 }
 
-// Helper function to check if we've already sent a notification today
-function hasAlreadySentToday(timeName: string): boolean {
+// Helper function to check if we've already sent a notification today using the database
+async function hasAlreadySentToday(timeName: string): Promise<boolean> {
   try {
-    const record = getLastSentTime(timeName)
-    if (!record) return false
-
     // Get today's date in YYYY-MM-DD format
     const today = new Date().toISOString().split("T")[0]
 
-    // Compare with the stored date
-    return record.date === today
+    // Check if we have a record for today
+    const existingLog = await StatusLog.findOne({ type: timeName, date: today })
+    return !!existingLog
   } catch (error) {
     console.error(`Error checking if ${timeName} notification was sent today:`, error)
     return false
   }
 }
 
-// Function to save the last sent time to persistent storage
-function saveLastSentTime(timeName: string): void {
+// Function to save status log to database
+async function saveStatusLog(timeName: string): Promise<void> {
   try {
     const now = new Date()
-    // Create a record with both timestamp and date
-    const record: LastSentRecord = {
-      timestamp: now.toISOString(),
-      date: now.toISOString().split("T")[0], // Just the YYYY-MM-DD part
-    }
+    const today = now.toISOString().split("T")[0] // YYYY-MM-DD format
 
-    // Use a global object to store the last sent times in memory
-    ;(global as any).lastSentTimes[timeName] = record
+    // Use findOneAndUpdate with upsert to avoid duplicates
+    await StatusLog.findOneAndUpdate({ type: timeName, date: today }, { sentAt: now }, { upsert: true, new: true })
 
-    // Also save to file system for persistence across restarts
-    const dataDir = path.join(__dirname, "../data")
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true })
-    }
-
-    // Save all times to a JSON file
-    const filePath = path.join(dataDir, "last-sent-times.json")
-    fs.writeFileSync(filePath, JSON.stringify((global as any).lastSentTimes, null, 2))
-
-    console.log(`Saved last sent time for ${timeName}: ${record.timestamp} (date: ${record.date})`)
+    console.log(`Saved status log for ${timeName} at ${now.toISOString()}`)
   } catch (error) {
-    console.error(`Error saving last sent time for ${timeName}:`, error)
-  }
-}
-
-// Function to get the last sent time from persistent storage
-function getLastSentTime(timeName: string): LastSentRecord | null {
-  try {
-    // Try to get from memory first
-    if ((global as any).lastSentTimes && (global as any).lastSentTimes[timeName]) {
-      return (global as any).lastSentTimes[timeName]
-    }
-
-    // If not in memory, try to load from file
-    const filePath = path.join(__dirname, "../data", "last-sent-times.json")
-
-    if (fs.existsSync(filePath)) {
-      // Load the file and parse it
-      const data = fs.readFileSync(filePath, "utf8")
-      const times = JSON.parse(data)
-
-      // Initialize the global object if needed
-      if (!(global as any).lastSentTimes) {
-        ;(global as any).lastSentTimes = {}
-      }
-
-      // Merge the loaded times with the global object
-      Object.assign((global as any).lastSentTimes, times)
-
-      return times[timeName] || null
-    }
-
-    return null
-  } catch (error) {
-    console.error(`Error getting last sent time for ${timeName}:`, error)
-    return null
+    console.error(`Error saving status log for ${timeName}:`, error)
   }
 }
