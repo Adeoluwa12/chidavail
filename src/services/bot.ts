@@ -3508,12 +3508,12 @@ async function extractMemberInformation(frame: Frame): Promise<MemberData[]> {
           console.log("No members found in referrals page.")
 
           // Send email notification that no members were found
-          await sendEmail(
-            "Availity Referrals Monitoring Active",
-            "No members were found in the referrals section at this time.\n\n" +
-              "The monitoring system is active and will check for new members every 10 seconds.\n\n" +
-              "You will receive an email notification as soon as a new member is detected.",
-          )
+          // await sendEmail(
+          //   "Availity Referrals Monitoring Active",
+          //   "No members were found in the referrals section at this time.\n\n" +
+          //     "The monitoring system is active and will check for new members every 10 seconds.\n\n" +
+          //     "You will receive an email notification as soon as a new member is detected.",
+          // )
 
           // Start continuous monitoring
           await startContinuousMonitoring(frame)
