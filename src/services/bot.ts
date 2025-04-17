@@ -3886,13 +3886,13 @@ async function startContinuousMonitoring(frame: Frame): Promise<void> {
             }
             if (tabClicked) break
           } catch (error) {
-            // Try next selector
+            // Try next selector and try again
           }
         }
 
         // If we couldn't find the tab by text, try finding it by position or other attributes
         if (!tabClicked) {
-          // Try to find tabs/navigation elements and click the first one (assuming it's "Incoming")
+          // Try to find tabs/navigation elements and click the first one (assuming it's "Incoming"), yeah
           try {
             const navElements = await safeOperation(
               () => frame.$$(".nav-tabs .nav-item, .nav-tabs .nav-link, .nav .nav-item, .nav .nav-link"),
