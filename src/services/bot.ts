@@ -6,6 +6,9 @@
 // import { sendSMS } from "./sms"
 // import { Referral } from "../models/referrals"
 // import { Notification } from "../models/notification"
+// import { StatusLog } from "../models/status-log"
+// // Add the import for the database connection functions at the top of the file
+// import { connectToDatabase, safeDbOperation } from "./database"
 
 // export const BOT_VERSION = "1.0.0"
 
@@ -21,7 +24,6 @@
 // let isLoggedIn = false
 // let currentFrame: Frame | null = null
 // const pendingRequests = new Set<string>() // Track pending requests to prevent duplicates
-// const notifiedMemberIds = new Set<string>() // Track which members we've already notified about
 // let lastRestartTime = new Date() // Track when we last restarted the browser
 // const requestQueue: Map<string, boolean> = new Map() // Queue to track operations
 // let requestAlreadyHandledErrors = 0 // Counter for "Request is already handled" errors
@@ -32,7 +34,7 @@
 // const LOGIN_URL = "https://apps.availity.com/availity/web/public.elegant.login"
 // const REFERRALS_API_URL = "https://apps.availity.com/api/v1/proxy/anthem/provconn/v1/carecentral/ltss/referral/details"
 // const TOTP_SECRET = process.env.TOTP_SECRET || "RU4SZCAW4UESMUQNCG3MXTWKXA"
-// const MONITORING_INTERVAL_MS = 10000 // 10 seconds (changed from 30000)
+// const MONITORING_INTERVAL_MS = 60000 // 10 seconds (changed from 30000)
 // const API_RETRY_DELAY_MS = 60000 // 60 seconds (based on Availity's retry header)
 // const MAX_RETRIES = 5 // Maximum number of retries for operations
 // const BROWSER_RESTART_INTERVAL_MS = 3600000 // 1 hour - restart browser periodically to prevent memory leaks
@@ -290,8 +292,12 @@
 //   }
 // }
 
+// // Update the setupBot function to include database connection
 // export async function setupBot(): Promise<void> {
 //   try {
+//     // Connect to the database first
+//     await connectToDatabase()
+
 //     // If browser is already initialized, don't create a new one
 //     if (browser && page) {
 //       console.log("Browser already initialized, skipping setup")
@@ -1316,12 +1322,12 @@
 //           console.log("No members found in referrals page.")
 
 //           // Send email notification that no members were found
-//           await sendEmail(
-//             "Availity Referrals Monitoring Active",
-//             "No members were found in the referrals section at this time.\n\n" +
-//               "The monitoring system is active and will check for new members every 10 seconds.\n\n" +
-//               "You will receive an email notification as soon as a new member is detected.",
-//           )
+//           // await sendEmail(
+//           //   "Availity Referrals Monitoring Active",
+//           //   "No members were found in the referrals section at this time.\n\n" +
+//           //     "The monitoring system is active and will check for new members every 10 seconds.\n\n" +
+//           //     "You will receive an email notification as soon as a new member is detected.",
+//           // )
 
 //           // Start continuous monitoring
 //           await startContinuousMonitoring(frame)
@@ -1468,57 +1474,142 @@
 //   }
 // }
 
-// // Function to send email with member information
-// // async function sendMemberInformationEmail(members: MemberData[]): Promise<void> {
-// //   try {
-// //     // We're removing this email notification as requested
-// //     console.log("Skipping initial members email notification as requested")
-// //   } catch (error) {
-// //     console.error("Error in sendMemberInformationEmail:", error)
-// //   }
-// // }
-
 // // Function to save members to database
 // async function saveMembersToDatabase(members: MemberData[]): Promise<void> {
 //   try {
 //     for (const member of members) {
-//       // Check if member already exists in database
-//       const existingMember = await Referral.findOne({
-//         memberID: member.memberID,
-//         memberName: member.memberName,
-//       })
+//       // Check if member already exists in database using safeDbOperation
+//       const existingMember = await safeDbOperation(
+//         () =>
+//           Referral.findOne({
+//             memberID: member.memberID,
+//             memberName: member.memberName,
+//           }),
+//         null,
+//       )
 
 //       if (!existingMember) {
 //         console.log(`Adding new member to database: ${member.memberName} (${member.memberID})`)
 
-//         // Create new referral record
-//         const newReferral = await Referral.create({
-//           memberName: member.memberName,
-//           memberID: member.memberID,
-//           serviceName: member.serviceName || "",
-//           status: member.status || "",
-//           county: member.county || "",
-//           requestOn: member.requestDate || new Date().toISOString(),
-//           isNotified: true, // Already notified since we're extracting it now
-//         })
-
-//         // Create notification
-//         const notification = await Notification.create({
-//           referralId: newReferral._id,
-//           memberName: member.memberName,
-//           memberID: member.memberID,
-//           message: `Member found in referrals: ${member.memberName} (${member.serviceName || "No service specified"})`,
-//         })
-
-//         // Send SMS notification for new member
-//         await sendSMS(
-//           `New member in referrals: ${member.memberName} (${member.memberID}). Check dashboard for details.`,
+//         // Create new referral record using safeDbOperation
+//         const newReferral = await safeDbOperation(
+//           () =>
+//             Referral.create({
+//               memberName: member.memberName,
+//               memberID: member.memberID,
+//               serviceName: member.serviceName || "",
+//               status: member.status || "",
+//               county: member.county || "",
+//               requestOn: member.requestDate || new Date().toISOString(),
+//               isNotified: true, // Mark as notified immediately when creating
+//             }),
+//           null,
 //         )
+
+//         if (newReferral) {
+//           // Create notification using safeDbOperation
+//           await safeDbOperation(
+//             () =>
+//               Notification.create({
+//                 referralId: newReferral._id,
+//                 memberName: member.memberName,
+//                 memberID: member.memberID,
+//                 message: `Member found in referrals: ${member.memberName} (${member.serviceName || "No service specified"})`,
+//               }),
+//             null,
+//           )
+
+//           // Send SMS notification for new member
+//           await sendSMS(
+//             `New member in referrals: ${member.memberName} (${member.memberID}). Check dashboard for details.`,
+//           )
+//         }
+//       } else if (existingMember && !existingMember.isNotified) {
+//         // If the member exists but hasn't been notified yet, mark as notified
+//         existingMember.isNotified = true
+//         await safeDbOperation(() => existingMember.save(), null)
+
+//         console.log(`Marked existing member as notified: ${member.memberName} (${member.memberID})`)
 //       }
 //     }
 //   } catch (error) {
 //     console.error("Error saving members to database:", error)
 //     // Continue even if database operations fail
+//   }
+// }
+
+// // Update the processNewMembers function to use safeDbOperation
+// async function processNewMembers(members: MemberData[]): Promise<void> {
+//   console.log("Processing new members...")
+//   try {
+//     // We'll use the database to check which members have already been notified about
+//     const unnotifiedMembers = []
+
+//     for (const member of members) {
+//       // Check if this referral has already been notified about using safeDbOperation
+//       const existingReferral = await safeDbOperation(
+//         () =>
+//           Referral.findOne({
+//             memberID: member.memberID,
+//             memberName: member.memberName,
+//             isNotified: true,
+//           }),
+//         null,
+//       )
+
+//       if (!existingReferral) {
+//         unnotifiedMembers.push(member)
+//       }
+//     }
+
+//     if (unnotifiedMembers.length === 0) {
+//       console.log("All new members have already been notified about, skipping notifications")
+//       return
+//     }
+
+//     // Rest of the function remains the same...
+
+//     // Save to database
+//     await saveMembersToDatabase(unnotifiedMembers)
+
+//     // Send email notification
+//     let emailContent = "New Referrals Detected:\n\n"
+
+//     unnotifiedMembers.forEach((member, index) => {
+//       emailContent += `Member ${index + 1}:\n`
+//       emailContent += `Name: ${member.memberName}\n`
+//       emailContent += `ID: ${member.memberID}\n`
+
+//       if (member.serviceName) {
+//         emailContent += `Service: ${member.serviceName}\n`
+//       }
+
+//       if (member.status) {
+//         emailContent += `Status: ${member.status}\n`
+//       }
+
+//       if (member.county) {
+//         emailContent += `County: ${member.county}\n`
+//       }
+
+//       if (member.requestDate) {
+//         emailContent += `Request Date: ${member.requestDate}\n`
+//       }
+
+//       emailContent += "\n"
+//     })
+
+//     await sendEmail("New Availity Referrals Detected", emailContent)
+//     console.log("Email notification sent for new members")
+
+//     // Send SMS for each new member
+//     for (const member of unnotifiedMembers) {
+//       await sendSMS(`New referral detected: ${member.memberName} (${member.memberID}). Check dashboard for details.`)
+//     }
+//     console.log("SMS notifications sent for new members")
+//   } catch (error) {
+//     console.error("Error processing new members:", error)
+//     // Continue even if notification fails
 //   }
 // }
 
@@ -1609,13 +1700,13 @@
 //             }
 //             if (tabClicked) break
 //           } catch (error) {
-//             // Try next selector
+//             // Try next selector and try again
 //           }
 //         }
 
 //         // If we couldn't find the tab by text, try finding it by position or other attributes
 //         if (!tabClicked) {
-//           // Try to find tabs/navigation elements and click the first one (assuming it's "Incoming")
+//           // Try to find tabs/navigation elements and click the first one (assuming it's "Incoming"), yeah
 //           try {
 //             const navElements = await safeOperation(
 //               () => frame.$$(".nav-tabs .nav-item, .nav-tabs .nav-link, .nav .nav-item, .nav .nav-link"),
@@ -1702,7 +1793,7 @@
 //         requestAlreadyHandledErrors++
 //       }
 //     }
-//   }, MONITORING_INTERVAL_MS) // Check every 30 seconds
+//   }, MONITORING_INTERVAL_MS) // Check every 10 seconds
 
 //   console.log(`Monitoring interval set up for every ${MONITORING_INTERVAL_MS / 1000} seconds`)
 // }
@@ -1718,65 +1809,75 @@
 // }
 
 // // Process new members that were found
-// async function processNewMembers(members: MemberData[]): Promise<void> {
-//   console.log("Processing new members...")
-//   try {
-//     // Filter out members we've already notified about
-//     const unnotifiedMembers = members.filter((member) => !notifiedMemberIds.has(member.memberID))
+// // async function processNewMembers(members: MemberData[]): Promise<void> {
+// //   console.log("Processing new members...")
+// //   try {
+// //     // We'll use the database to check which members have already been notified about
+// //     const unnotifiedMembers = []
 
-//     if (unnotifiedMembers.length === 0) {
-//       console.log("All new members have already been notified about, skipping notifications")
-//       return
-//     }
+// //     for (const member of members) {
+// //       // Check if this referral has already been notified about
+// //       const existingReferral = await Referral.findOne({
+// //         memberID: member.memberID,
+// //         memberName: member.memberName,
+// //         isNotified: true,
+// //       })
 
-//     // Save to database
-//     await saveMembersToDatabase(unnotifiedMembers)
+// //       if (!existingReferral) {
+// //         unnotifiedMembers.push(member)
+// //       }
+// //     }
 
-//     // Send email notification
-//     let emailContent = "New Referrals Detected:\n\n"
+// //     if (unnotifiedMembers.length === 0) {
+// //       console.log("All new members have already been notified about, skipping notifications")
+// //       return
+// //     }
 
-//     unnotifiedMembers.forEach((member, index) => {
-//       emailContent += `Member ${index + 1}:\n`
-//       emailContent += `Name: ${member.memberName}\n`
-//       emailContent += `ID: ${member.memberID}\n`
+// //     // Save to database
+// //     await saveMembersToDatabase(unnotifiedMembers)
 
-//       if (member.serviceName) {
-//         emailContent += `Service: ${member.serviceName}\n`
-//       }
+// //     // Send email notification
+// //     let emailContent = "New Referrals Detected:\n\n"
 
-//       if (member.status) {
-//         emailContent += `Status: ${member.status}\n`
-//       }
+// //     unnotifiedMembers.forEach((member, index) => {
+// //       emailContent += `Member ${index + 1}:\n`
+// //       emailContent += `Name: ${member.memberName}\n`
+// //       emailContent += `ID: ${member.memberID}\n`
 
-//       if (member.county) {
-//         emailContent += `County: ${member.county}\n`
-//       }
+// //       if (member.serviceName) {
+// //         emailContent += `Service: ${member.serviceName}\n`
+// //       }
 
-//       if (member.requestDate) {
-//         emailContent += `Request Date: ${member.requestDate}\n`
-//       }
+// //       if (member.status) {
+// //         emailContent += `Status: ${member.status}\n`
+// //       }
 
-//       emailContent += "\n"
+// //       if (member.county) {
+// //         emailContent += `County: ${member.county}\n`
+// //       }
 
-//       // Add this member to our notified set
-//       notifiedMemberIds.add(member.memberID)
-//     })
+// //       if (member.requestDate) {
+// //         emailContent += `Request Date: ${member.requestDate}\n`
+// //       }
 
-//     await sendEmail("New Availity Referrals Detected", emailContent)
-//     console.log("Email notification sent for new members")
+// //       emailContent += "\n"
+// //     })
 
-//     // Send SMS for each new member
-//     for (const member of unnotifiedMembers) {
-//       await sendSMS(`New referral detected: ${member.memberName} (${member.memberID}). Check dashboard for details.`)
-//     }
-//     console.log("SMS notifications sent for new members")
-//   } catch (error) {
-//     console.error("Error processing new members:", error)
-//     // Continue even if notification fails
-//   }
-// }
+// //     await sendEmail("New Availity Referrals Detected", emailContent)
+// //     console.log("Email notification sent for new members")
 
-// // Function to check for new referrals using API
+// //     // Send SMS for each new member
+// //     for (const member of unnotifiedMembers) {
+// //       await sendSMS(`New referral detected: ${member.memberName} (${member.memberID}). Check dashboard for details.`)
+// //     }
+// //     console.log("SMS notifications sent for new members")
+// //   } catch (error) {
+// //     console.error("Error processing new members:", error)
+// //     // Continue even if notification fails
+// //   }
+// // }
+
+// // Update the checkForNewReferrals function to use safeDbOperation
 // export async function checkForNewReferrals(): Promise<void> {
 //   // Create a unique request ID for this API check
 //   const requestId = `api-check-${Date.now()}`
@@ -1840,39 +1941,41 @@
 //       const currentTime = new Date()
 //       console.log(`Retrieved ${response.data.referrals.length} referrals from API`)
 
-//       const newReferrals = response.data.referrals.filter((referral) => {
-//         const requestDate = new Date(referral.requestOn)
-//         return requestDate > lastCheckTime
-//       })
-
-//       console.log(`Found ${newReferrals.length} new referrals since last check`)
-
-//       if (newReferrals.length > 0) {
-//         // Filter out referrals we've already notified about
-//         const unnotifiedReferrals = newReferrals.filter((referral) => !notifiedMemberIds.has(referral.memberID))
-
-//         // Process each new referral
-//         for (const referral of unnotifiedReferrals) {
-//           // Check if referral already exists in database
-//           const existingReferral = await Referral.findOne({
-//             memberID: referral.memberID,
-//             requestOn: referral.requestOn,
-//           })
-
-//           if (!existingReferral) {
-//             // Save the new referral
-//             const savedReferral = await Referral.create({
-//               ...referral,
-//               isNotified: false,
-//             })
-
-//             // Create notification
-//             const notification = await Notification.create({
-//               referralId: savedReferral._id,
-//               memberName: referral.memberName,
+//       // Process each referral from the API
+//       for (const referral of response.data.referrals) {
+//         // Check if referral already exists in database using safeDbOperation
+//         const existingReferral = await safeDbOperation(
+//           () =>
+//             Referral.findOne({
 //               memberID: referral.memberID,
-//               message: `New referral for ${referral.memberName} (${referral.serviceName}) received on ${referral.requestOn}`,
-//             })
+//               requestOn: referral.requestOn,
+//             }),
+//           null,
+//         )
+
+//         if (!existingReferral) {
+//           // Save the new referral using safeDbOperation
+//           const savedReferral = await safeDbOperation(
+//             () =>
+//               Referral.create({
+//                 ...referral,
+//                 isNotified: true, // Mark as notified immediately when creating
+//               }),
+//             null,
+//           )
+
+//           if (savedReferral) {
+//             // Create notification using safeDbOperation
+//             await safeDbOperation(
+//               () =>
+//                 Notification.create({
+//                   referralId: savedReferral._id,
+//                   memberName: referral.memberName,
+//                   memberID: referral.memberID,
+//                   message: `New referral for ${referral.memberName} (${referral.serviceName}) received on ${referral.requestOn}`,
+//                 }),
+//               null,
+//             )
 
 //             // Send email notification
 //             await sendEmail(
@@ -1890,17 +1993,8 @@
 //             await sendSMS(
 //               `New referral: ${referral.memberName} (${referral.memberID}) for ${referral.serviceName}. Check dashboard for details.`,
 //             )
-
-//             // Mark as notified
-//             savedReferral.isNotified = true
-//             await savedReferral.save()
-
-//             // Add to our notified set
-//             notifiedMemberIds.add(referral.memberID)
 //           }
 //         }
-//       } else {
-//         console.log("No new referrals found in this check")
 //       }
 
 //       // Update last check time
@@ -1957,17 +2051,6 @@
 // export async function startReferralMonitoring(): Promise<void> {
 //   console.log("🚀 Starting referral monitoring process with 30-second interval...")
 //   console.log(`⏰ Current time: ${new Date().toISOString()}`)
-
-//   // Send startup notification
-//   try {
-//     // await sendEmail(
-//     //   "Availity Monitoring Bot Active",
-//     //   `The Availity monitoring bot has been started at ${new Date().toISOString()}.\n\n` +
-//     //     "The bot will check for new referrals every 10 seconds and notify you when new members are detected.",
-//     // )
-//   } catch (error) {
-//     console.error("Failed to send startup notification:", error)
-//   }
 
 //   // Initial check
 //   try {
@@ -2165,6 +2248,17 @@
 //       timeOfDay = "Evening Status"
 //     }
 
+//     // Check if we've already sent this type of status today
+//     const statusType = timeOfDay.toLowerCase().split(" ")[0] // "morning", "afternoon", etc.
+//     const today = now.toISOString().split("T")[0] // YYYY-MM-DD format
+
+//     const existingStatus = await StatusLog.findOne({ type: statusType, date: today })
+
+//     if (existingStatus) {
+//       console.log(`Already sent ${statusType} status today at ${existingStatus.sentAt.toLocaleString()}, skipping`)
+//       return
+//     }
+
 //     const message =
 //       `Hi, just wanted to let you know I'm still active, up and running!\n\n` +
 //       `Current time: ${new Date().toLocaleString()}\n` +
@@ -2178,6 +2272,13 @@
 
 //     await sendEmail(`Availity Bot ${timeOfDay}`, message)
 //     console.log(`Sent '${timeOfDay}' notification email`)
+
+//     // Log this status in the database
+//     await StatusLog.create({
+//       type: statusType,
+//       sentAt: now,
+//       date: today,
+//     })
 //   } catch (error) {
 //     console.error("Failed to send 'still alive' notification:", error)
 //   }
@@ -2220,7 +2321,7 @@ const AVAILITY_URL = "https://apps.availity.com"
 const LOGIN_URL = "https://apps.availity.com/availity/web/public.elegant.login"
 const REFERRALS_API_URL = "https://apps.availity.com/api/v1/proxy/anthem/provconn/v1/carecentral/ltss/referral/details"
 const TOTP_SECRET = process.env.TOTP_SECRET || "RU4SZCAW4UESMUQNCG3MXTWKXA"
-const MONITORING_INTERVAL_MS = 60000 // 10 seconds (changed from 30000)
+const MONITORING_INTERVAL_MS = 10000 // 10 seconds (changed from 30000)
 const API_RETRY_DELAY_MS = 60000 // 60 seconds (based on Availity's retry header)
 const MAX_RETRIES = 5 // Maximum number of retries for operations
 const BROWSER_RESTART_INTERVAL_MS = 3600000 // 1 hour - restart browser periodically to prevent memory leaks
@@ -2755,8 +2856,69 @@ export async function loginToAvaility(): Promise<boolean> {
 
     // Enter username and password
     console.log("Entering credentials...")
-    await safeOperation(() => page!.type("#userId", process.env.AVAILITY_USERNAME || ""), null)
-    await safeOperation(() => page!.type("#password", process.env.AVAILITY_PASSWORD || ""), null)
+    // Wait for the login form to be visible
+    try {
+      await safeOperation(() => page!.waitForSelector("#userId", { visible: true, timeout: 10000 }), null)
+      await safeOperation(() => page!.type("#userId", process.env.AVAILITY_USERNAME || ""), null)
+      await safeOperation(() => page!.type("#password", process.env.AVAILITY_PASSWORD || ""), null)
+    } catch (error) {
+      console.log("Login form not found with #userId selector, trying alternative selectors...")
+
+      // Try alternative selectors for username/password fields
+      const usernameSelectors = [
+        'input[name="userId"]',
+        'input[type="text"]',
+        'input[placeholder*="user"]',
+        'input[placeholder*="User"]',
+      ]
+      const passwordSelectors = [
+        'input[name="password"]',
+        'input[type="password"]',
+        'input[placeholder*="password"]',
+        'input[placeholder*="Password"]',
+      ]
+
+      let usernameEntered = false
+      let passwordEntered = false
+
+      // Try each username selector
+      for (const selector of usernameSelectors) {
+        try {
+          if (await safeOperation(() => page!.$(selector), null)) {
+            await safeOperation(() => page!.type(selector, process.env.AVAILITY_USERNAME || ""), null)
+            usernameEntered = true
+            break
+          }
+        } catch (err) {
+          // Continue to next selector
+        }
+      }
+
+      // Try each password selector
+      for (const selector of passwordSelectors) {
+        try {
+          if (await safeOperation(() => page!.$(selector), null)) {
+            await safeOperation(() => page!.type(selector, process.env.AVAILITY_PASSWORD || ""), null)
+            passwordEntered = true
+            break
+          }
+        } catch (err) {
+          // Continue to next selector
+        }
+      }
+
+      if (!usernameEntered || !passwordEntered) {
+        // Take a screenshot to debug
+        try {
+          await page!.screenshot({ path: "login-debug.png" })
+          console.log("Saved login page screenshot for debugging")
+        } catch (screenshotErr) {
+          console.error("Failed to save debug screenshot:", screenshotErr)
+        }
+
+        throw new Error("Could not find login form fields")
+      }
+    }
 
     // Click login button
     await safeOperation(() => page!.click('button[type="submit"]'), null)
@@ -3508,12 +3670,12 @@ async function extractMemberInformation(frame: Frame): Promise<MemberData[]> {
           console.log("No members found in referrals page.")
 
           // Send email notification that no members were found
-          // await sendEmail(
-          //   "Availity Referrals Monitoring Active",
-          //   "No members were found in the referrals section at this time.\n\n" +
-          //     "The monitoring system is active and will check for new members every 10 seconds.\n\n" +
-          //     "You will receive an email notification as soon as a new member is detected.",
-          // )
+          await sendEmail(
+            "Availity Referrals Monitoring Active",
+            "No members were found in the referrals section at this time.\n\n" +
+              "The monitoring system is active and will check for new members every 10 seconds.\n\n" +
+              "You will receive an email notification as soon as a new member is detected.",
+          )
 
           // Start continuous monitoring
           await startContinuousMonitoring(frame)
@@ -3886,13 +4048,13 @@ async function startContinuousMonitoring(frame: Frame): Promise<void> {
             }
             if (tabClicked) break
           } catch (error) {
-            // Try next selector and try again
+            // Try next selector
           }
         }
 
         // If we couldn't find the tab by text, try finding it by position or other attributes
         if (!tabClicked) {
-          // Try to find tabs/navigation elements and click the first one (assuming it's "Incoming"), yeah
+          // Try to find tabs/navigation elements and click the first one (assuming it's "Incoming")
           try {
             const navElements = await safeOperation(
               () => frame.$$(".nav-tabs .nav-item, .nav-tabs .nav-link, .nav .nav-item, .nav .nav-link"),
@@ -4125,60 +4287,62 @@ export async function checkForNewReferrals(): Promise<void> {
       )
 
       const currentTime = new Date()
-      console.log(`Retrieved ${response.data.referrals.length} referrals from API`)
+      console.log(`Retrieved ${response.data.referrals ? response.data.referrals.length : 0} referrals from API`)
 
-      // Process each referral from the API
-      for (const referral of response.data.referrals) {
-        // Check if referral already exists in database using safeDbOperation
-        const existingReferral = await safeDbOperation(
-          () =>
-            Referral.findOne({
-              memberID: referral.memberID,
-              requestOn: referral.requestOn,
-            }),
-          null,
-        )
-
-        if (!existingReferral) {
-          // Save the new referral using safeDbOperation
-          const savedReferral = await safeDbOperation(
+      // Make sure referrals exists before trying to iterate
+      if (response.data.referrals && Array.isArray(response.data.referrals)) {
+        for (const referral of response.data.referrals) {
+          // Check if referral already exists in database using safeDbOperation
+          const existingReferral = await safeDbOperation(
             () =>
-              Referral.create({
-                ...referral,
-                isNotified: true, // Mark as notified immediately when creating
+              Referral.findOne({
+                memberID: referral.memberID,
+                requestOn: referral.requestOn,
               }),
             null,
           )
 
-          if (savedReferral) {
-            // Create notification using safeDbOperation
-            await safeDbOperation(
+          if (!existingReferral) {
+            // Save the new referral using safeDbOperation
+            const savedReferral = await safeDbOperation(
               () =>
-                Notification.create({
-                  referralId: savedReferral._id,
-                  memberName: referral.memberName,
-                  memberID: referral.memberID,
-                  message: `New referral for ${referral.memberName} (${referral.serviceName}) received on ${referral.requestOn}`,
+                Referral.create({
+                  ...referral,
+                  isNotified: true, // Mark as notified immediately when creating
                 }),
               null,
             )
 
-            // Send email notification
-            await sendEmail(
-              "New Referral Notification",
-              `New referral received for ${referral.memberName} (ID: ${referral.memberID}).\n\n` +
-                `Service: ${referral.serviceName}\n` +
-                `Region: ${referral.regionName}\n` +
-                `County: ${referral.county}\n` +
-                `Plan: ${referral.plan}\n` +
-                `Preferred Start Date: ${referral.preferredStartDate}\n` +
-                `Status: ${referral.status}`,
-            )
+            if (savedReferral) {
+              // Create notification using safeDbOperation
+              await safeDbOperation(
+                () =>
+                  Notification.create({
+                    referralId: savedReferral._id,
+                    memberName: referral.memberName,
+                    memberID: referral.memberID,
+                    message: `New referral for ${referral.memberName} (${referral.serviceName}) received on ${referral.requestOn}`,
+                  }),
+                null,
+              )
 
-            // Send SMS notification
-            await sendSMS(
-              `New referral: ${referral.memberName} (${referral.memberID}) for ${referral.serviceName}. Check dashboard for details.`,
-            )
+              // Send email notification
+              await sendEmail(
+                "New Referral Notification",
+                `New referral received for ${referral.memberName} (ID: ${referral.memberID}).\n\n` +
+                  `Service: ${referral.serviceName}\n` +
+                  `Region: ${referral.regionName}\n` +
+                  `County: ${referral.county}\n` +
+                  `Plan: ${referral.plan}\n` +
+                  `Preferred Start Date: ${referral.preferredStartDate}\n` +
+                  `Status: ${referral.status}`,
+              )
+
+              // Send SMS notification
+              await sendSMS(
+                `New referral: ${referral.memberName} (${referral.memberID}) for ${referral.serviceName}. Check dashboard for details.`,
+              )
+            }
           }
         }
       }
