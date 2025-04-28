@@ -214,7 +214,8 @@
 // }
 
 
-import { StatusLog } from "../src/models/status-log"
+// import { StatusLog } from "../src/models/status-log" 
+import { StatusLog } from "./models/status-log"
 
 // Function to schedule status emails at specific times of day
 export function scheduleStatusEmails(sendStatusFn: () => Promise<void>): NodeJS.Timeout[] {
