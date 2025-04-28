@@ -1,77 +1,241 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Start Bot</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-      margin: 0;
-      background-color: #f4f4f9;
-    }
-    .container {
-      text-align: center;
-      background: white;
-      padding: 2rem;
-      border-radius: 8px;
-      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    }
-    button {
-      padding: 0.75rem 1.5rem;
-      font-size: 1rem;
-      color: white;
-      background-color: #007bff;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-    button:hover {
-      background-color: #0056b3;
-    }
-    #status {
-      margin-top: 1rem;
-      font-size: 1.2rem;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Availity Bot Control Panel</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            padding-top: 2rem;
+            background-color: #f8f9fa;
+        }
+        .status-indicator {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 10px;
+        }
+        .status-running {
+            background-color: #28a745;
+        }
+        .status-stopped {
+            background-color: #dc3545;
+        }
+        .card {
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .log-container {
+            height: 300px;
+            overflow-y: auto;
+            background-color: #212529;
+            color: #f8f9fa;
+            padding: 1rem;
+            border-radius: 0.25rem;
+            font-family: monospace;
+        }
+        .timestamp {
+            color: #6c757d;
+            font-size: 0.8rem;
+        }
+    </style>
 </head>
 <body>
-  <div class="container">
-    <h1>Start the Bot</h1>
-    <button id="start-bot">Start Bot</button>
-    <div id="status"></div>
-  </div>
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-md-10">
+                <div class="card mb-4">
+                    <div class="card-header bg-primary text-white">
+                        <h3 class="mb-0">Availity Bot Control Panel</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="row align-items-center mb-4">
+                            <div class="col-md-6">
+                                <h4>
+                                    <span id="statusIndicator" class="status-indicator status-stopped"></span>
+                                    Status: <span id="botStatus">Checking...</span>
+                                </h4>
+                                <p id="lastChecked" class="text-muted">Last checked: Checking...</p>
+                            </div>
+                            <div class="col-md-6 text-end">
+                                <button id="startButton" class="btn btn-success me-2" disabled>Start Bot</button>
+                                <button id="sendStatusButton" class="btn btn-info" disabled>Send Status Email</button>
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h5 class="mb-0">Bot Statistics</h5>
+                                    </div>
+                                    <div class="card-body">
+                                        <p><strong>Uptime:</strong> <span id="uptime">Checking...</span></p>
+                                        <p><strong>Members Monitored:</strong> <span id="membersCount">Checking...</span></p>
+                                        <p><strong>Last Status Email:</strong> <span id="lastStatusEmail">Checking...</span></p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h5 class="mb-0">System Health</h5>
+                                    </div>
+                                    <div class="card-body">
+                                        <p><strong>Memory Usage:</strong> <span id="memoryUsage">Checking...</span></p>
+                                        <p><strong>CPU Usage:</strong> <span id="cpuUsage">Checking...</span></p>
+                                        <p><strong>Database Connection:</strong> <span id="dbStatus">Checking...</span></p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0">Recent Logs</h5>
+                                <button id="refreshLogsButton" class="btn btn-sm btn-outline-secondary">Refresh</button>
+                            </div>
+                            <div class="card-body">
+                                <div id="logContainer" class="log-container">
+                                    <div class="log-entry">
+                                        <span class="timestamp">[Loading logs...]</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
-  <script>
-    document.getElementById("start-bot").addEventListener("click", async () => {
-      const button = document.getElementById("start-bot");
-      const status = document.getElementById("status");
-
-      button.disabled = true;
-      status.textContent = "Starting bot...";
-
-      try {
-        const response = await fetch("/start-bot", {
-          method: "POST",
-        });
-
-        const data = await response.json();
-        if (response.ok) {
-          status.textContent = data.message;
-        } else {
-          status.textContent = `Error: ${data.message}`;
+    <script>
+        // Function to update the status display
+        function updateStatus() {
+            fetch('/health')
+                .then(response => response.json())
+                .then(data => {
+                    const statusIndicator = document.getElementById('statusIndicator');
+                    const botStatus = document.getElementById('botStatus');
+                    const lastChecked = document.getElementById('lastChecked');
+                    const startButton = document.getElementById('startButton');
+                    const sendStatusButton = document.getElementById('sendStatusButton');
+                    
+                    // Update status indicator
+                    if (data.botRunning) {
+                        statusIndicator.className = 'status-indicator status-running';
+                        botStatus.textContent = 'Running';
+                        botStatus.className = 'text-success';
+                        startButton.disabled = true;
+                        startButton.textContent = 'Bot Running';
+                    } else {
+                        statusIndicator.className = 'status-indicator status-stopped';
+                        botStatus.textContent = 'Stopped';
+                        botStatus.className = 'text-danger';
+                        startButton.disabled = false;
+                        startButton.textContent = 'Start Bot';
+                    }
+                    
+                    // Enable status button regardless
+                    sendStatusButton.disabled = false;
+                    
+                    // Update last checked time
+                    const date = new Date(data.timestamp);
+                    lastChecked.textContent = `Last checked: ${date.toLocaleString()}`;
+                    
+                    // Update other stats if available
+                    if (data.stats) {
+                        document.getElementById('uptime').textContent = data.stats.uptime || 'N/A';
+                        document.getElementById('membersCount').textContent = data.stats.membersCount || 'N/A';
+                        document.getElementById('lastStatusEmail').textContent = data.stats.lastStatusEmail || 'N/A';
+                        document.getElementById('memoryUsage').textContent = data.stats.memoryUsage || 'N/A';
+                        document.getElementById('cpuUsage').textContent = data.stats.cpuUsage || 'N/A';
+                        document.getElementById('dbStatus').textContent = data.stats.dbConnected ? 'Connected' : 'Disconnected';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching status:', error);
+                    document.getElementById('botStatus').textContent = 'Error checking status';
+                    document.getElementById('botStatus').className = 'text-warning';
+                });
         }
-      } catch (error) {
-        status.textContent = "Failed to start bot. Check the console for details.";
-        console.error(error);
-      } finally {
-        button.disabled = false;
-      }
-    });
-  </script>
+        
+        // Function to fetch and display logs
+        function fetchLogs() {
+            fetch('/logs')
+                .then(response => response.json())
+                .then(data => {
+                    const logContainer = document.getElementById('logContainer');
+                    logContainer.innerHTML = '';
+                    
+                    if (data.logs && data.logs.length > 0) {
+                        data.logs.forEach(log => {
+                            const logEntry = document.createElement('div');
+                            logEntry.className = 'log-entry';
+                            
+                            const timestamp = document.createElement('span');
+                            timestamp.className = 'timestamp';
+                            timestamp.textContent = `[${new Date(log.timestamp).toLocaleString()}] `;
+                            
+                            const message = document.createElement('span');
+                            message.textContent = log.message;
+                            
+                            logEntry.appendChild(timestamp);
+                            logEntry.appendChild(message);
+                            logContainer.appendChild(logEntry);
+                        });
+                    } else {
+                        logContainer.innerHTML = '<div class="log-entry">No logs available</div>';
+                    }
+                    
+                    // Scroll to bottom
+                    logContainer.scrollTop = logContainer.scrollHeight;
+                })
+                .catch(error => {
+                    console.error('Error fetching logs:', error);
+                    document.getElementById('logContainer').innerHTML = 
+                        '<div class="log-entry text-danger">Error loading logs</div>';
+                });
+        }
+        
+        // Event listeners
+        document.getElementById('startButton').addEventListener('click', () => {
+            fetch('/start-bot', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    alert(data.message);
+                    updateStatus();
+                    fetchLogs();
+                })
+                .catch(error => {
+                    console.error('Error starting bot:', error);
+                    alert('Error starting bot. Check console for details.');
+                });
+        });
+        
+        document.getElementById('sendStatusButton').addEventListener('click', () => {
+            fetch('/send-status', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    alert(data.message);
+                    updateStatus();
+                    fetchLogs();
+                })
+                .catch(error => {
+                    console.error('Error sending status:', error);
+                    alert('Error sending status. Check console for details.');
+                });
+        });
+        
+        document.getElementById('refreshLogsButton').addEventListener('click', fetchLogs);
+        
+        // Initial updates
+        updateStatus();
+        fetchLogs();
+        
+        // Set up periodic updates
+        setInterval(updateStatus, 30000); // Update status every 30 seconds
+    </script>
 </body>
 </html>

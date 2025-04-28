@@ -147,14 +147,3 @@ export async function safeDbOperation<T>(operation: () => Promise<T>, defaultVal
 }
 
 
-///one thing after the other
-//I don't actually make noise, so don't know what else you wnat
-
-//omooo
-//God abeg
-
-//omo my ge
-
-//omo soro soke bjooo
-
-//walai
