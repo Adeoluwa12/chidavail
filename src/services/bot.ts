@@ -2742,15 +2742,17 @@ export async function switchToApiOnlyMode(): Promise<void> {
 
   // Send notification about the mode switch
   try {
-    // await sendEmail(
-    //   "Availity Bot Mode Change",
-    //   `The Availity monitoring bot has switched to API-only mode at ${new Date().toLocaleString()}\n\n` +
-    //     `This happened because the bot was unable to navigate to the Availity website using the browser.\n\n` +
-    //     `In API-only mode, the bot will continue to monitor for referrals using direct API calls, but some features may be limited.\n\n` +
-    //     `This is an automated message from the monitoring system.`,
-    // )
+    await sendEmail(
+      "Availity Bot Mode",
+      // `The Availity monitoring bot has switched to API-only mode at ${new Date().toLocaleString()}\n\n` +
+      //   `This happened because the bot was unable to navigate to the Availity website using the browser.\n\n` +
+      //   `In API-only mode, the bot will continue to monitor for referrals using direct API calls, but some features may be limited.\n\n` +
+        `This is an automated message from the monitoring system.`,
+    )
   } catch (error) {
-    console.error("Failed to send mode change not
+    console.error("Failed to send mode change notification:", error)
+  }
+}
 
 async function getSessionCookies(): Promise<string> {
   if (!page) {
