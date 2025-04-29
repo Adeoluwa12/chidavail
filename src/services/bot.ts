@@ -2598,7 +2598,7 @@ const MONITORING_INTERVAL_MS = 10000 // 10 seconds (changed from 30000)
 const API_RETRY_DELAY_MS = 60000 // 60 seconds (based on Availity's retry header)
 const MAX_RETRIES = 5 // Maximum number of retries for operations
 const BROWSER_RESTART_INTERVAL_MS = 3600000 // 1 hour - restart browser periodically to prevent memory leaks
-const HOURLY_RESTART_INTERVAL_MS = 3540000 // 59 minutes in milliseconds
+const HOURLY_RESTART_INTERVAL_MS = 3000000 // 50 minutes in milliseconds
 
 // Interfaces
 interface ReferralResponse {
@@ -4861,7 +4861,8 @@ function extractXsrfToken(cookies: string): string {
 
 // Function to handle the restart logic
 export async function restartBot(): Promise<void> {
-  console.log("Performing scheduled restart...")
+  console.log("Performing scheduled restart after 50 minutes...")
+  console.log("Terminating process - process manager will restart the application")
 
   // Stop monitoring
   if (monitoringInterval) {
@@ -4875,14 +4876,9 @@ export async function restartBot(): Promise<void> {
   // Close browser
   await closeBrowser()
 
-  // Restart the bot
-  try {
-    await setupBot()
-    await loginToAvaility()
-    console.log("Successfully restarted and logged in")
-  } catch (error) {
-    console.error("Failed to restart bot:", error)
-  }
+  // Exit the process with code 0 (success)
+  // This will allow the process manager to restart it
+  process.exit(0)
 }
 
 // Function to start the monitoring process
@@ -4955,9 +4951,9 @@ export async function startReferralMonitoring(): Promise<void> {
   console.log(`⏰ Next check scheduled for ${new Date(Date.now() + MONITORING_INTERVAL_MS).toISOString()}`)
 
   // Set up the hourly restart timer
-  console.log(`Setting up hourly restart timer for every ${HOURLY_RESTART_INTERVAL_MS / 60000} minutes`)
+  console.log(`Setting up restart timer for ${HOURLY_RESTART_INTERVAL_MS / 60000} minutes`)
   setTimeout(async () => {
-    console.log("Hourly restart timer triggered")
+    console.log("50-minute restart timer triggered")
     await restartBot()
   }, HOURLY_RESTART_INTERVAL_MS)
 

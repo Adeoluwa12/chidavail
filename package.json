@@ -5,7 +5,7 @@
 
 
 
-  "scripts": {
+"scripts": {
     "build": "tsc",
     "postbuild": "copyfiles -u 1 \"src/public/**/*\" dist",
     "copy-public": "mkdir -p dist/public && cp -r src/public/* dist/public/",

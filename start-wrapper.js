@@ -1,231 +1,72 @@
-// const { spawn } = require("child_process")
-// const fs = require("fs")
-// const path = require("path")
-// const { exec } = require("child_process")
-
-// // Configuration
-// const MAX_RUNTIME_MS = 60 * 60 * 1000 // 1 hour exactly
-// const RESTART_DELAY_MS = 60000 // 1 minute
-// const LOG_FILE = path.join(__dirname, "bot-restarts.log")
-
-// // State tracking
-// let botProcess = null
-// let shutdownTimer = null
-
-// // Function to log restart events
-// function logRestart(message) {
-//   const timestamp = new Date().toISOString()
-//   const logMessage = `${timestamp} - ${message}\n`
-
-//   console.log(message)
-
-//   // Append to log file
-//   fs.appendFileSync(LOG_FILE, logMessage)
-// }
-
-// // Function to start the bot
-// function startBot() {
-//   // Start the bot process
-//   logRestart("Starting bot process...")
-
-//   // Use node directly with the compiled JS file
-//   botProcess = spawn("node", ["dist/botworker.js"], {
-//     stdio: "inherit",
-//     env: process.env,
-//   })
-
-//   // Set up the shutdown timer - EXACTLY 1 HOUR
-//   shutdownTimer = setTimeout(() => {
-//     logRestart(`Maximum runtime of 60 minutes reached. Shutting down for restart...`)
-
-//     if (botProcess) {
-//       // Send SIGTERM to allow graceful shutdown
-//       botProcess.kill("SIGTERM")
-
-//       // Force kill after 10 seconds if not exited
-//       setTimeout(() => {
-//         if (botProcess) {
-//           logRestart("Forcing process termination...")
-//           botProcess.kill("SIGKILL")
-//         }
-//       }, 10000)
-//     }
-//   }, MAX_RUNTIME_MS)
-
-//   // Handle process exit
-//   botProcess.on("exit", (code, signal) => {
-//     logRestart(`Bot process exited with code ${code} and signal ${signal}`)
-
-//     // Clear the shutdown timer if it exists
-//     if (shutdownTimer) {
-//       clearTimeout(shutdownTimer)
-//       shutdownTimer = null
-//     }
-
-//     // Schedule restart with delay
-//     logRestart(`Scheduling restart in ${RESTART_DELAY_MS / 1000} seconds...`)
-//     setTimeout(() => {
-//       // Use npm start to restart the process
-//       exec("npm start", (error, stdout, stderr) => {
-//         if (error) {
-//           logRestart(`Error restarting with npm start: ${error.message}`)
-//           // Fall back to direct restart
-//           startBot()
-//         } else {
-//           logRestart("Process restarted with npm start")
-//           // Exit this process since npm start will create a new one
-//           process.exit(0)
-//         }
-//       })
-//     }, RESTART_DELAY_MS)
-//   })
-
-//   // Handle process errors
-//   botProcess.on("error", (err) => {
-//     logRestart(`Bot process error: ${err.message}`)
-//   })
-// }
-
-// // Handle script termination
-// process.on("SIGINT", () => {
-//   logRestart("Received SIGINT. Shutting down...")
-//   if (shutdownTimer) {
-//     clearTimeout(shutdownTimer)
-//   }
-//   if (botProcess) {
-//     botProcess.kill("SIGINT")
-//   }
-//   process.exit(0)
-// })
-
-// process.on("SIGTERM", () => {
-//   logRestart("Received SIGTERM. Shutting down...")
-//   if (shutdownTimer) {
-//     clearTimeout(shutdownTimer)
-//   }
-//   if (botProcess) {
-//     botProcess.kill("SIGTERM")
-//   }
-//   process.exit(0)
-// })
-
-// // Start the bot
-// startBot()
-
 const { spawn } = require("child_process")
 const fs = require("fs")
 const path = require("path")
-const { exec } = require("child_process")
 
-// Ensure data directory exists
-require("./ensure-data-dir")
+// Ensure logs directory exists
+const logsDir = path.join(__dirname, "logs")
+if (!fs.existsSync(logsDir)) {
+  fs.mkdirSync(logsDir, { recursive: true })
+}
 
-// Configuration
-const MAX_RUNTIME_MS = 60 * 60 * 1000 // 1 hour exactly
-const RESTART_DELAY_MS = 60000 // 1 minute
-const LOG_FILE = path.join(__dirname, "bot-restarts.log")
+// Create log file streams
+const logFile = fs.createWriteStream(path.join(logsDir, "process-manager.log"), { flags: "a" })
 
-// State tracking
-let botProcess = null
-let shutdownTimer = null
-
-// Function to log restart events
-function logRestart(message) {
+// Log function
+function log(message) {
   const timestamp = new Date().toISOString()
-  const logMessage = `${timestamp} - ${message}\n`
-
-  console.log(message)
-
-  // Append to log file
-  fs.appendFileSync(LOG_FILE, logMessage)
+  const logMessage = `[${timestamp}] ${message}`
+  console.log(logMessage)
+  logFile.write(logMessage + "\n")
 }
 
 // Function to start the bot
 function startBot() {
-  // Start the bot process
-  logRestart("Starting bot process...")
+  log("Starting bot process...")
 
-  // Use node directly with the compiled JS file
-  botProcess = spawn("node", ["dist/botworker.js"], {
-    stdio: "inherit",
-    env: process.env,
+  // Use npm run start-web to start the bot
+  const botProcess = spawn("npm", ["run", "start-web"], {
+    stdio: "pipe",
+    shell: true,
   })
 
-  // Set up the shutdown timer - EXACTLY 1 HOUR
-  shutdownTimer = setTimeout(() => {
-    logRestart(`Maximum runtime of 60 minutes reached. Shutting down for restart...`)
+  // Handle stdout
+  botProcess.stdout.on("data", (data) => {
+    process.stdout.write(data)
 
-    if (botProcess) {
-      // Send SIGTERM to allow graceful shutdown
-      botProcess.kill("SIGTERM")
+    // Also write to log file
+    fs.appendFileSync(path.join(logsDir, "bot-stdout.log"), data)
+  })
 
-      // Force kill after 10 seconds if not exited
-      setTimeout(() => {
-        if (botProcess) {
-          logRestart("Forcing process termination...")
-          botProcess.kill("SIGKILL")
-        }
-      }, 10000)
-    }
-  }, MAX_RUNTIME_MS)
+  // Handle stderr
+  botProcess.stderr.on("data", (data) => {
+    process.stderr.write(data)
+
+    // Also write to log file
+    fs.appendFileSync(path.join(logsDir, "bot-stderr.log"), data)
+  })
 
   // Handle process exit
-  botProcess.on("exit", (code, signal) => {
-    logRestart(`Bot process exited with code ${code} and signal ${signal}`)
+  botProcess.on("close", (code) => {
+    log(`Bot process exited with code ${code}`)
 
-    // Clear the shutdown timer if it exists
-    if (shutdownTimer) {
-      clearTimeout(shutdownTimer)
-      shutdownTimer = null
-    }
-
-    // Schedule restart with delay
-    logRestart(`Scheduling restart in ${RESTART_DELAY_MS / 1000} seconds...`)
-    setTimeout(() => {
-      // Use npm start to restart the process
-      exec("npm start", (error, stdout, stderr) => {
-        if (error) {
-          logRestart(`Error restarting with npm start: ${error.message}`)
-          // Fall back to direct restart
-          startBot()
-        } else {
-          logRestart("Process restarted with npm start")
-          // Exit this process since npm start will create a new one
-          process.exit(0)
-        }
-      })
-    }, RESTART_DELAY_MS)
+    // Restart the bot after a short delay
+    log("Restarting bot in 5 seconds...")
+    setTimeout(startBot, 5000)
   })
 
-  // Handle process errors
-  botProcess.on("error", (err) => {
-    logRestart(`Bot process error: ${err.message}`)
-  })
+  return botProcess
 }
 
-// Handle script termination
+// Start the bot initially
+startBot()
+
+// Handle process manager termination
 process.on("SIGINT", () => {
-  logRestart("Received SIGINT. Shutting down...")
-  if (shutdownTimer) {
-    clearTimeout(shutdownTimer)
-  }
-  if (botProcess) {
-    botProcess.kill("SIGINT")
-  }
+  log("Process manager received SIGINT, shutting down...")
   process.exit(0)
 })
 
 process.on("SIGTERM", () => {
-  logRestart("Received SIGTERM. Shutting down...")
-  if (shutdownTimer) {
-    clearTimeout(shutdownTimer)
-  }
-  if (botProcess) {
-    botProcess.kill("SIGTERM")
-  }
+  log("Process manager received SIGTERM, shutting down...")
   process.exit(0)
 })
-
-// Start the bot
-startBot()
-
