@@ -2906,7 +2906,7 @@ export async function setupBot(): Promise<void> {
     await closeBrowser()
 
     browser = await puppeteer.launch({
-      headless: false,
+      headless: new as any,
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
