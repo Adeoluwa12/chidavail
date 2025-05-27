@@ -2888,7 +2888,8 @@ async function forceRestart(): Promise<void> {
 export async function setupBot(): Promise<void> {
   try {
     // Connect to the database first
-    await connectToDatabase()
+    await connectToDatabase() 
+    //all is well oo
 
     // If we're in API-only mode, don't initialize the browser
     if (isApiOnlyMode) {
