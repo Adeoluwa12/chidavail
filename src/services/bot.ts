@@ -4022,7 +4022,7 @@ async function navigateToCareCentral(page: Page): Promise<void> {
     await delay(500)
 
     // Wait for and click the option
-    await safeOperation(() => newBodyFrame.waitForSelector(".av-select", { visible: true, timeout: 30000 }), null)
+    await safeOperation(() => newBodyFrame.waitForSelector(".av-select", { visible: true, timeout: 60000 }), null)
     await safeOperation(() => newBodyFrame.click(".av-select"), null)
 
     // Look specifically for Harmony Health LLC option
