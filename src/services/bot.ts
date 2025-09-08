@@ -7869,8 +7869,6 @@
 
 
 
-
-
 import puppeteer, { type Browser, type Page, type Frame } from "puppeteer"
 import axios, { type AxiosError } from "axios"
 import { authenticator } from "otplib"
@@ -9467,9 +9465,9 @@ async function navigateToCareCentral(page: Page): Promise<void> {
       await safeOperation(() => newBodyFrame.waitForSelector(".av-select", { visible: true, timeout: 80000 }), null)
       await safeOperation(() => newBodyFrame.click(".av-select"), null)
       console.log(`[DEBUG] SUCCESS: Original .av-select selector worked`)
-    } catch (originalError: any) {
-      const errorMessage = originalError instanceof Error ? originalError.message : String(originalError)
-      console.log(`[DEBUG] Original .av-select failed: ${errorMessage}`)
+    } catch (originalError) {
+      const errorMsg = originalError instanceof Error ? originalError.message : String(originalError)
+      console.log(`[DEBUG] Original .av-select failed: ${errorMsg}`)
       await captureDebugScreenshot(page, "av-select-failed")
 
       const alternativeSuccess = await tryAlternativeSelectors(newBodyFrame)
@@ -9477,12 +9475,25 @@ async function navigateToCareCentral(page: Page): Promise<void> {
       if (!alternativeSuccess) {
         console.log(`[DEBUG] All selectors failed. Current frame URL: ${newBodyFrame.url()}`)
         await analyzePageSelectors(newBodyFrame, ".av-select")
-        throw new Error(`Failed to find any select dropdown. Original error: ${originalError.message}`)
+        const originalErrorMsg = originalError instanceof Error ? originalError.message : String(originalError)
+        throw new Error(`Failed to find any select dropdown. Original error: ${originalErrorMsg}`)
+      }
+
+      console.log(`[DEBUG] Combobox clicked successfully, now waiting for .av-select to open dropdown...`)
+      await delay(1000)
+
+      try {
+        await safeOperation(() => newBodyFrame.waitForSelector(".av-select", { visible: true, timeout: 10000 }), null)
+        await safeOperation(() => newBodyFrame.click(".av-select"), null)
+        console.log(`[DEBUG] SUCCESS: .av-select found and clicked after combobox interaction`)
+      } catch (avSelectError) {
+        const errorMsg = avSelectError instanceof Error ? avSelectError.message : String(avSelectError)
+        console.log(`[DEBUG] .av-select still not found after combobox click: ${errorMsg}`)
+        // Continue anyway - maybe the dropdown is already open
       }
     }
 
-    // Wait for Material-UI menu to appear after clicking the combobox
-    await delay(1000)
+    await delay(2000)
 
     // Try multiple Material-UI option selectors
     const materialUIOptionSelectors = [
@@ -9545,7 +9556,7 @@ async function navigateToCareCentral(page: Page): Promise<void> {
         if (error instanceof Error) {
           console.log(`[DEBUG] Material-UI selector ${optionSelector} failed: ${error.message}`)
         } else {
-          console.log(`[DEBUG] Material-UI selector ${optionSelector} failed: Unknown error`, error)
+          console.log(`[DEBUG] Material-UI selector ${optionSelector} failed:`, error)
         }
         continue
       }
@@ -9580,7 +9591,15 @@ async function navigateToCareCentral(page: Page): Promise<void> {
 
       if (clickableElements.length > 0) {
         const element = clickableElements[0]
-        await safeOperation(() => (newBodyFrame as any).mouse.click(element.x, element.y), null)
+        // Fallback: try to click the element via evaluate if mouse is not available
+        await safeOperation(
+          () =>
+            newBodyFrame.evaluate(({ x, y }) => {
+              const el = document.elementFromPoint(x, y) as HTMLElement | null
+              if (el) el.click()
+            }, { x: element.x, y: element.y }),
+          null
+        )
         selectedOption = true
         console.log(`[DEBUG] SUCCESS: Clicked Harmony Health element via coordinates`)
       }
