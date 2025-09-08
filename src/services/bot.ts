@@ -8221,7 +8221,7 @@ export async function setupBot(): Promise<void> {
     await closeBrowser()
 
     browser = await puppeteer.launch({
-      headless: true,
+      headless: false,
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
@@ -8849,15 +8849,17 @@ export async function loginToAvaility(): Promise<boolean> {
 
     // Try to resume monitoring if it was active before, even after error
     if (wasMonitoring && !isMonitoring) {
-      console.log("Attempting to resume monitoring after login failure...")
+      console.log("Attempting to resume monitoring after login failure...");
       // Try again to login after a short delay
-      setTimeout(async () => {
-        try {
-          await loginToAvaility()
-        } catch (retryError) {
-          console.error("Failed to login on retry:", retryError)
-        }
-      }, 60000) // Wait 1 minute before retry
+      setTimeout(() => {
+        (async () => {
+          try {
+            await loginToAvaility();
+          } catch (retryError) {
+            console.error("Failed to login on retry:", retryError);
+          }
+        })();
+      }, 60000); // Wait 1 minute before retry
     }
 
     pendingRequests.delete(requestId)
@@ -9604,11 +9606,77 @@ async function navigateToCareCentral(page: Page): Promise<void> {
     // Wait for provider field to become enabled
     await delay(1000)
 
-    // Click and select provider - using correct Material-UI Autocomplete selector
-    await safeOperation(() => newBodyFrame.click("#selectedProvider"), null)
+    console.log(`[DEBUG] Starting enhanced provider selection process...`)
 
-    // Wait longer for dropdown to fully open
-    await delay(1500)
+    // First, click on the provider input field to focus it
+    await safeOperation(() => newBodyFrame.click("#selectedProvider"), null)
+    await delay(500)
+
+    // Try to click the dropdown arrow button to open the autocomplete dropdown
+    const dropdownArrowSelectors = [
+      '#selectedProvider + button[aria-label="Open"]',
+      '#selectedProvider ~ button[title="Open"]',
+      ".MuiAutocomplete-endAdornment button",
+      ".MuiAutocomplete-popupIndicator",
+      '[data-testid="ArrowDropDownIcon"]',
+    ]
+
+    let dropdownOpened = false
+    for (const selector of dropdownArrowSelectors) {
+      try {
+        const arrowButton = await safeOperation(() => newBodyFrame.$(selector), null)
+        if (arrowButton) {
+          await safeOperation(() => arrowButton.click(), null)
+          console.log(`[DEBUG] SUCCESS: Clicked dropdown arrow with selector: ${selector}`)
+          dropdownOpened = true
+          break
+        }
+      } catch (error) {
+        console.log(`[DEBUG] Failed to click dropdown arrow with selector: ${selector}`)
+        continue
+      }
+    }
+
+    // If dropdown arrow didn't work, try clicking the input field again and typing to trigger autocomplete
+    if (!dropdownOpened) {
+      console.log(`[DEBUG] Dropdown arrow not found, trying input field interaction...`)
+      await safeOperation(() => newBodyFrame.focus("#selectedProvider"), null)
+      await delay(500)
+
+      // Clear any existing value and type to trigger autocomplete
+      await safeOperation(
+        () =>
+          newBodyFrame.evaluate(() => {
+            const input = document.querySelector("#selectedProvider") as HTMLInputElement
+            if (input) {
+              input.value = ""
+              input.dispatchEvent(new Event("input", { bubbles: true }))
+            }
+          }),
+        null,
+      )
+
+      await delay(500)
+      await safeOperation(() => newBodyFrame.type("#selectedProvider", "Harmony", { delay: 100 }), null)
+      await delay(2000)
+    }
+
+    // Wait for dropdown to be fully expanded
+    await safeOperation(
+      () =>
+        newBodyFrame.waitForFunction(
+          () => {
+            const autocomplete = document.querySelector(".MuiAutocomplete-root")
+            return autocomplete && autocomplete.getAttribute("aria-expanded") === "true"
+          },
+          { timeout: 10000 },
+        ),
+      null,
+    ).catch(() => {
+      console.log(`[DEBUG] Could not verify dropdown expansion, continuing anyway`)
+    })
+
+    await delay(1000)
 
     // Alternative provider selectors if #selectedProvider fails
     const providerSelectors = [
@@ -9700,7 +9768,6 @@ async function navigateToCareCentral(page: Page): Promise<void> {
 
     await delay(3000)
 
-    // Verify that the provider field now has a value
     const providerValue = await safeOperation(
       () =>
         newBodyFrame.evaluate(() => {
@@ -9713,41 +9780,54 @@ async function navigateToCareCentral(page: Page): Promise<void> {
     console.log(`[DEBUG] Provider field value after selection: "${providerValue}"`)
 
     if (!providerValue && providerSelected) {
-      console.log(`[DEBUG] Provider field still empty, trying alternative selection method...`)
+      console.log(`[DEBUG] Provider field still empty, trying enhanced fallback methods...`)
 
-      // Try typing in the provider field to trigger autocomplete
+      // Method 1: Try typing in the provider field to trigger autocomplete
       await safeOperation(() => newBodyFrame.focus("#selectedProvider"), null)
       await delay(500)
+
+      // Clear field first (simulate select-all and delete via evaluate, since Frame.keyboard may not exist)
+      await safeOperation(
+        () =>
+          newBodyFrame.evaluate(() => {
+            const input = document.querySelector("#selectedProvider") as HTMLInputElement
+            if (input) {
+              input.focus()
+              input.value = ""
+              input.dispatchEvent(new Event("input", { bubbles: true }))
+              input.dispatchEvent(new Event("change", { bubbles: true }))
+            }
+          }),
+        null,
+      )
+      await delay(500)
+
       await safeOperation(() => newBodyFrame.type("#selectedProvider", "Harmony Health", { delay: 100 }), null)
       await delay(2000)
 
       // Try to select the first autocomplete option
       try {
-        // Use evaluate to simulate keyboard events since Frame does not have a keyboard property
+        // Since Frame.keyboard may not exist, simulate ArrowDown and Enter via evaluate
         await safeOperation(
           () =>
             newBodyFrame.evaluate(() => {
-              const input = document.querySelector("#selectedProvider") as HTMLInputElement
-              if (input) {
-                const arrowDownEvent = new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })
-                input.dispatchEvent(arrowDownEvent)
-              }
+              const e = new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true });
+              const input = document.querySelector("#selectedProvider");
+              if (input) input.dispatchEvent(e);
             }),
           null,
-        )
-        await delay(500)
+        );
+        await delay(500);
         await safeOperation(
           () =>
             newBodyFrame.evaluate(() => {
-              const input = document.querySelector("#selectedProvider") as HTMLInputElement
-              if (input) {
-                const enterEvent = new KeyboardEvent("keydown", { key: "Enter", bubbles: true })
-                input.dispatchEvent(enterEvent)
-              }
+              const e = new KeyboardEvent("keydown", { key: "Enter", bubbles: true });
+              const input = document.querySelector("#selectedProvider");
+              if (input) input.dispatchEvent(e);
             }),
           null,
-        )
-        await delay(1000)
+        );
+        await delay(1000);
 
         // Check if this worked
         const newProviderValue = await safeOperation(
@@ -9759,9 +9839,41 @@ async function navigateToCareCentral(page: Page): Promise<void> {
           "",
         )
 
-        console.log(`[DEBUG] Provider field value after typing method: "${newProviderValue}"`)
-      } catch (error) {
-        console.log(`[DEBUG] Alternative typing method failed: ${error}`)
+        console.log(`[DEBUG] Provider field value after keyboard selection: "${newProviderValue}"}"`)
+
+        if (newProviderValue) {
+          console.log(`[DEBUG] SUCCESS: Provider field populated via keyboard navigation`)
+        } else {
+          // Method 2: Try direct value assignment as last resort
+          console.log(`[DEBUG] Trying direct value assignment as final fallback...`)
+          await safeOperation(
+            () =>
+              newBodyFrame.evaluate(() => {
+                const providerInput = document.querySelector("#selectedProvider") as HTMLInputElement
+                if (providerInput) {
+                  providerInput.value = "Harmony Health LLC"
+                  providerInput.dispatchEvent(new Event("input", { bubbles: true }))
+                  providerInput.dispatchEvent(new Event("change", { bubbles: true }))
+                }
+              }),
+            null,
+          )
+
+          await delay(1000)
+
+          const finalProviderValue = await safeOperation(
+            () =>
+              newBodyFrame.evaluate(() => {
+                const providerInput = document.querySelector("#selectedProvider") as HTMLInputElement
+                return providerInput ? providerInput.value : ""
+              }),
+            "",
+          )
+
+          console.log(`[DEBUG] Provider field value after direct assignment: "${finalProviderValue}"`)
+        }
+      } catch (keyboardError) {
+        console.log(`[DEBUG] Keyboard navigation failed:`, keyboardError)
       }
     }
 
