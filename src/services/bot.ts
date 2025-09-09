@@ -7897,7 +7897,7 @@ let isLoggedIn = false
 let currentFrame: Frame | null = null
 const pendingRequests = new Set<string>() // Track pending requests to prevent duplicates
 let lastRestartTime = new Date() // Track when we last restarted the browser
-const requestQueue: Map<string, boolean> = new Map() // Queue to track operations
+const requestQueue: Map<string, boolean> = new Map<string, boolean>() // Queue to track operations
 let requestAlreadyHandledErrors = 0 // Counter for "Request is already handled" errors
 const MAX_REQUEST_ALREADY_HANDLED_ERRORS = 20 // Threshold for restart
 let navigationFailureCount = 0 // Track consecutive navigation failures
@@ -9221,7 +9221,7 @@ async function analyzePageSelectors(frame: Frame, targetSelector: string): Promi
     console.log(`[DEBUG] Found select elements:`, JSON.stringify(selectElements, null, 2))
 
     // Check if target selector exists
-    const targetExists = await frame.$(targetSelector).catch(() => null)
+    const targetExists = await frame.$(targetSelector as unknown as string).catch(() => null)
     console.log(`[DEBUG] Target selector "${targetSelector}" exists: ${!!targetExists}`)
   } catch (error) {
     console.error(`[DEBUG] Error analyzing selectors: ${error}`)
@@ -9442,11 +9442,78 @@ async function navigateToCareCentral(page: Page): Promise<void> {
       throw new Error("Could not find newBody iframe")
     }
 
-    // Wait for the form to load in the iframe
-    await safeOperation(() => newBodyFrame.waitForSelector("form", { timeout: 40000 }), null)
+    console.log("[DEBUG] Waiting for iframe content to load...")
+    await captureDebugScreenshot(page, "iframe-loaded")
+
+    // Wait for iframe to be fully loaded first
+    await delay(3000)
+
+    // Try multiple form-related selectors with increased timeout
+    const formSelectors = [
+      "form",
+      "form[name]",
+      "form[id]",
+      "#organizations",
+      "select#organizations",
+      ".form-container",
+      "[role='form']",
+      "div[class*='form']",
+    ]
+
+    let formFound = false
+    let formSelector = ""
+
+    for (const selector of formSelectors) {
+      try {
+        console.log(`[DEBUG] Trying form selector: ${selector}`)
+        await safeOperation(() => newBodyFrame.waitForSelector(selector, { timeout: 15000 }), null)
+        formFound = true
+        formSelector = selector
+        console.log(`[DEBUG] Found form using selector: ${selector}`)
+        break
+      } catch (error) {
+        if (error instanceof Error) {
+          console.log(`[DEBUG] Selector ${selector} failed: ${error.message}`)
+        } else {
+          console.log(`[DEBUG] Selector ${selector} failed:`, error)
+        }
+        continue
+      }
+    }
+
+    if (!formFound) {
+      // Take a screenshot of the iframe content for debugging
+      await captureDebugScreenshot(page, "iframe-no-form-found")
+
+      // Try to get iframe content for debugging
+      const iframeContent = await safeOperation(
+        () => newBodyFrame.evaluate(() => document.body.innerHTML),
+        "Could not get iframe content",
+      )
+      console.log("[DEBUG] Iframe content:", iframeContent.substring(0, 500) + "...")
+
+      // Wait longer and try again with a more generic approach
+      console.log("[DEBUG] Trying to wait for any interactive element...")
+      const interactiveSelectors = ["input", "select", "button", "textarea", "[onclick]", "[onchange]", "a[href]"]
+
+      for (const selector of interactiveSelectors) {
+        try {
+          await safeOperation(() => newBodyFrame.waitForSelector(selector, { timeout: 10000 }), null)
+          console.log(`[DEBUG] Found interactive element: ${selector}`)
+          formFound = true
+          break
+        } catch (error) {
+          continue
+        }
+      }
+    }
+
+    if (!formFound) {
+      throw new Error("Could not find any form or interactive elements in the iframe after trying multiple selectors")
+    }
 
     // Wait for the organization dropdown to be present in the iframe
-    await safeOperation(() => newBodyFrame.waitForSelector("#organizations", { timeout: 40000 }), null)
+    await safeOperation(() => newBodyFrame.waitForSelector("#organizations", { timeout: 60000 }), null)
 
     // Click on the organization dropdown
     await safeOperation(() => newBodyFrame.click("#organizations"), null)
@@ -9533,8 +9600,8 @@ async function navigateToCareCentral(page: Page): Promise<void> {
           // Look for Harmony Health LLC option in Material-UI format
           const harmonyOption = await safeOperation(
             () =>
-              newBodyFrame.evaluate((selectorParam) => {
-                const options = Array.from(document.querySelectorAll(selectorParam))
+              newBodyFrame.evaluate((selector) => {
+                const options = Array.from(document.querySelectorAll(selector))
                 const harmonyOption = options.find(
                   (option) => option.textContent && option.textContent.includes("Harmony Health LLC"),
                 )
@@ -9547,8 +9614,8 @@ async function navigateToCareCentral(page: Page): Promise<void> {
             // Click on the Harmony Health LLC option
             await safeOperation(
               () =>
-                newBodyFrame.evaluate((selectorParam) => {
-                  const options = Array.from(document.querySelectorAll(selectorParam))
+                newBodyFrame.evaluate((selector) => {
+                  const options = Array.from(document.querySelectorAll(selector))
                   const harmonyOption = options.find(
                     (option) => option.textContent && option.textContent.includes("Harmony Health LLC"),
                   )
@@ -9740,8 +9807,8 @@ async function navigateToCareCentral(page: Page): Promise<void> {
         // Look specifically for Harmony Health provider option
         const harmonyProviderOption = await safeOperation(
           () =>
-            newBodyFrame.evaluate((selectorParam) => {
-              const options = Array.from(document.querySelectorAll(selectorParam))
+            newBodyFrame.evaluate((selector) => {
+              const options = Array.from(document.querySelectorAll(selector))
               const harmonyOption = options.find(
                 (option) =>
                   option.textContent &&
@@ -9756,8 +9823,8 @@ async function navigateToCareCentral(page: Page): Promise<void> {
           // Click on the Harmony Health provider option
           await safeOperation(
             () =>
-              newBodyFrame.evaluate((selectorParam) => {
-                const options = Array.from(document.querySelectorAll(selectorParam))
+              newBodyFrame.evaluate((selector) => {
+                const options = Array.from(document.querySelectorAll(selector))
                 const harmonyOption = options.find(
                   (option) =>
                     option.textContent &&
@@ -9827,90 +9894,6 @@ async function navigateToCareCentral(page: Page): Promise<void> {
       // Type "Harmony Health" into the provider field
       await safeOperation(() => newBodyFrame.type("#selectedProvider", "Harmony Health", { delay: 100 }), null)
       await delay(2000)
-
-      // Try to select the first autocomplete option by clicking it via evaluate
-      try {
-        await safeOperation(
-          () =>
-            newBodyFrame.evaluate(() => {
-              // Try to find the first autocomplete option and click it
-              // This selector may need to be adjusted based on the actual DOM
-              const dropdown = document.querySelector('[role="listbox"], .autocomplete-list, .MuiAutocomplete-listbox')
-              if (dropdown) {
-                const firstOption =
-                  dropdown.querySelector('[role="option"]') ||
-                  dropdown.querySelector("li") ||
-                  dropdown.querySelector("div")
-                if (firstOption) {
-                  (firstOption as HTMLElement).click()
-                }
-              }
-            }),
-          null,
-        )
-        await delay(1000)
-
-        // Check if this worked
-        const newProviderValue = await safeOperation(
-          () =>
-            newBodyFrame.evaluate(() => {
-              const providerInput = document.querySelector("#selectedProvider") as HTMLInputElement
-              return providerInput ? providerInput.value : ""
-            }),
-          "",
-        )
-
-        console.log(`[DEBUG] Provider field value after keyboard selection: "${newProviderValue}"}"`)
-
-        if (newProviderValue) {
-          console.log(`[DEBUG] SUCCESS: Provider field populated via keyboard navigation`)
-        } else {
-          // Method 2: Try direct value assignment as last resort
-          console.log(`[DEBUG] Trying direct value assignment as final fallback...`)
-          await safeOperation(
-            () =>
-              newBodyFrame.evaluate(() => {
-                const providerInput = document.querySelector("#selectedProvider") as HTMLInputElement
-                if (providerInput) {
-                  providerInput.value = "Harmony Health LLC"
-                  providerInput.dispatchEvent(new Event("input", { bubbles: true }))
-                  providerInput.dispatchEvent(new Event("change", { bubbles: true }))
-                }
-              }),
-            null,
-          )
-
-          await delay(1000)
-
-          const finalProviderValue = await safeOperation(
-            () =>
-              newBodyFrame.evaluate(() => {
-                const providerInput = document.querySelector("#selectedProvider") as HTMLInputElement
-                return providerInput ? providerInput.value : ""
-              }),
-            "",
-          )
-
-          console.log(`[DEBUG] Provider field value after direct assignment: "${finalProviderValue}"`)
-        }
-      } catch (keyboardError) {
-        console.log(`[DEBUG] Keyboard navigation failed:`, keyboardError)
-      }
-    }
-
-    const finalProviderValue = await safeOperation(
-      () =>
-        newBodyFrame.evaluate(() => {
-          const providerInput = document.querySelector("#selectedProvider") as HTMLInputElement
-          return providerInput ? providerInput.value : ""
-        }),
-      "",
-    )
-
-    if (!finalProviderValue) {
-      console.log(`[DEBUG] WARNING: Provider field is still empty, but continuing to Next button`)
-    } else {
-      console.log(`[DEBUG] SUCCESS: Provider field has value: "${finalProviderValue}"`)
     }
 
     // Wait for selection to be processed
