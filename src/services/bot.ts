@@ -7868,7 +7868,6 @@
 // }
 
 
-
 import puppeteer, { type Browser, type Page, type Frame } from "puppeteer"
 import axios, { type AxiosError } from "axios"
 import { authenticator } from "otplib"
@@ -8221,7 +8220,7 @@ export async function setupBot(): Promise<void> {
     await closeBrowser()
 
     browser = await puppeteer.launch({
-      headless: false,
+      headless: true,
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
@@ -8849,17 +8848,15 @@ export async function loginToAvaility(): Promise<boolean> {
 
     // Try to resume monitoring if it was active before, even after error
     if (wasMonitoring && !isMonitoring) {
-      console.log("Attempting to resume monitoring after login failure...");
+      console.log("Attempting to resume monitoring after login failure...")
       // Try again to login after a short delay
-      setTimeout(() => {
-        (async () => {
-          try {
-            await loginToAvaility();
-          } catch (retryError) {
-            console.error("Failed to login on retry:", retryError);
-          }
-        })();
-      }, 60000); // Wait 1 minute before retry
+      setTimeout(async () => {
+        try {
+          await loginToAvaility()
+        } catch (retryError) {
+          console.error("Failed to login on retry:", retryError)
+        }
+      }, 60000) // Wait 1 minute before retry
     }
 
     pendingRequests.delete(requestId)
@@ -9603,80 +9600,12 @@ async function navigateToCareCentral(page: Page): Promise<void> {
       throw new Error("Could not find or select any organization option in Material-UI dropdown")
     }
 
-    // Wait for provider field to become enabled
-    await delay(1000)
+    console.log(`[DEBUG] Organization selected successfully. Waiting 45 seconds for provider dropdown to populate...`)
+    await delay(45000) // Wait 45 seconds for provider options to load
 
-    console.log(`[DEBUG] Starting enhanced provider selection process...`)
-
-    // First, click on the provider input field to focus it
+    // Click and select provider - using correct Material-UI Autocomplete selector
     await safeOperation(() => newBodyFrame.click("#selectedProvider"), null)
     await delay(500)
-
-    // Try to click the dropdown arrow button to open the autocomplete dropdown
-    const dropdownArrowSelectors = [
-      '#selectedProvider + button[aria-label="Open"]',
-      '#selectedProvider ~ button[title="Open"]',
-      ".MuiAutocomplete-endAdornment button",
-      ".MuiAutocomplete-popupIndicator",
-      '[data-testid="ArrowDropDownIcon"]',
-    ]
-
-    let dropdownOpened = false
-    for (const selector of dropdownArrowSelectors) {
-      try {
-        const arrowButton = await safeOperation(() => newBodyFrame.$(selector), null)
-        if (arrowButton) {
-          await safeOperation(() => arrowButton.click(), null)
-          console.log(`[DEBUG] SUCCESS: Clicked dropdown arrow with selector: ${selector}`)
-          dropdownOpened = true
-          break
-        }
-      } catch (error) {
-        console.log(`[DEBUG] Failed to click dropdown arrow with selector: ${selector}`)
-        continue
-      }
-    }
-
-    // If dropdown arrow didn't work, try clicking the input field again and typing to trigger autocomplete
-    if (!dropdownOpened) {
-      console.log(`[DEBUG] Dropdown arrow not found, trying input field interaction...`)
-      await safeOperation(() => newBodyFrame.focus("#selectedProvider"), null)
-      await delay(500)
-
-      // Clear any existing value and type to trigger autocomplete
-      await safeOperation(
-        () =>
-          newBodyFrame.evaluate(() => {
-            const input = document.querySelector("#selectedProvider") as HTMLInputElement
-            if (input) {
-              input.value = ""
-              input.dispatchEvent(new Event("input", { bubbles: true }))
-            }
-          }),
-        null,
-      )
-
-      await delay(500)
-      await safeOperation(() => newBodyFrame.type("#selectedProvider", "Harmony", { delay: 100 }), null)
-      await delay(2000)
-    }
-
-    // Wait for dropdown to be fully expanded
-    await safeOperation(
-      () =>
-        newBodyFrame.waitForFunction(
-          () => {
-            const autocomplete = document.querySelector(".MuiAutocomplete-root")
-            return autocomplete && autocomplete.getAttribute("aria-expanded") === "true"
-          },
-          { timeout: 10000 },
-        ),
-      null,
-    ).catch(() => {
-      console.log(`[DEBUG] Could not verify dropdown expansion, continuing anyway`)
-    })
-
-    await delay(1000)
 
     // Alternative provider selectors if #selectedProvider fails
     const providerSelectors = [
@@ -9704,17 +9633,13 @@ async function navigateToCareCentral(page: Page): Promise<void> {
       throw new Error("Could not find or click provider dropdown")
     }
 
-    await delay(3000)
-
     // Wait for provider dropdown options to appear using Material-UI selectors
     let providerOptionsFound = false
-    let providerSelected = false
-
     for (const optionSelector of materialUIOptionSelectors) {
       try {
+        console.log(`[DEBUG] Trying Material-UI provider option selector: ${optionSelector}`)
         await safeOperation(() => newBodyFrame.waitForSelector(optionSelector, { visible: true, timeout: 10000 }), null)
 
-        // Look specifically for Harmony Health provider option
         const harmonyProviderOption = await safeOperation(
           () =>
             newBodyFrame.evaluate((selectorParam) => {
@@ -9722,7 +9647,8 @@ async function navigateToCareCentral(page: Page): Promise<void> {
               const harmonyOption = options.find(
                 (option) =>
                   option.textContent &&
-                  (option.textContent.includes("Harmony Health") || option.textContent.includes("HARMONY HEALTH")),
+                  option.textContent.includes("Harmony Health") &&
+                  !option.textContent.includes("LLC"),
               )
               return harmonyOption ? true : false
             }, optionSelector),
@@ -9738,7 +9664,8 @@ async function navigateToCareCentral(page: Page): Promise<void> {
                 const harmonyOption = options.find(
                   (option) =>
                     option.textContent &&
-                    (option.textContent.includes("Harmony Health") || option.textContent.includes("HARMONY HEALTH")),
+                    option.textContent.includes("Harmony Health") &&
+                    !option.textContent.includes("LLC"),
                 )
                 if (harmonyOption) {
                   ;(harmonyOption as HTMLElement).click()
@@ -9747,17 +9674,15 @@ async function navigateToCareCentral(page: Page): Promise<void> {
             null,
           )
           console.log(`[DEBUG] SUCCESS: Selected Harmony Health provider with selector: ${optionSelector}`)
-          providerSelected = true
-        } else {
-          // If Harmony Health not found, click the first option
-          await safeOperation(() => newBodyFrame.click(optionSelector), null)
-          console.log(`[DEBUG] SUCCESS: Selected first provider option with selector: ${optionSelector}`)
-          providerSelected = true
+          providerOptionsFound = true
+          break
         }
-
-        providerOptionsFound = true
-        break
       } catch (error) {
+        if (error instanceof Error) {
+          console.log(`[DEBUG] Provider selector ${optionSelector} failed: ${error.message}`)
+        } else {
+          console.log(`[DEBUG] Provider selector ${optionSelector} failed: ${String(error)}`)
+        }
         continue
       }
     }
@@ -9766,160 +9691,12 @@ async function navigateToCareCentral(page: Page): Promise<void> {
       console.log(`[DEBUG] WARNING: Could not find provider options, continuing anyway`)
     }
 
-    await delay(3000)
+    console.log(`[DEBUG] Provider selection completed. Waiting 5 seconds before clicking Next...`)
+    await delay(5000)
 
-    const providerValue = await safeOperation(
-      () =>
-        newBodyFrame.evaluate(() => {
-          const providerInput = document.querySelector("#selectedProvider") as HTMLInputElement
-          return providerInput ? providerInput.value : ""
-        }),
-      "",
-    )
-
-    console.log(`[DEBUG] Provider field value after selection: "${providerValue}"`)
-
-    if (!providerValue && providerSelected) {
-      console.log(`[DEBUG] Provider field still empty, trying enhanced fallback methods...`)
-
-      // Method 1: Try typing in the provider field to trigger autocomplete
-      await safeOperation(() => newBodyFrame.focus("#selectedProvider"), null)
-      await delay(500)
-
-      // Clear field first (simulate select-all and delete via evaluate, since Frame.keyboard may not exist)
-      await safeOperation(
-        () =>
-          newBodyFrame.evaluate(() => {
-            const input = document.querySelector("#selectedProvider") as HTMLInputElement
-            if (input) {
-              input.focus()
-              input.value = ""
-              input.dispatchEvent(new Event("input", { bubbles: true }))
-              input.dispatchEvent(new Event("change", { bubbles: true }))
-            }
-          }),
-        null,
-      )
-      await delay(500)
-
-      await safeOperation(() => newBodyFrame.type("#selectedProvider", "Harmony Health", { delay: 100 }), null)
-      await delay(2000)
-
-      // Try to select the first autocomplete option
-      try {
-        // Since Frame.keyboard may not exist, simulate ArrowDown and Enter via evaluate
-        await safeOperation(
-          () =>
-            newBodyFrame.evaluate(() => {
-              const e = new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true });
-              const input = document.querySelector("#selectedProvider");
-              if (input) input.dispatchEvent(e);
-            }),
-          null,
-        );
-        await delay(500);
-        await safeOperation(
-          () =>
-            newBodyFrame.evaluate(() => {
-              const e = new KeyboardEvent("keydown", { key: "Enter", bubbles: true });
-              const input = document.querySelector("#selectedProvider");
-              if (input) input.dispatchEvent(e);
-            }),
-          null,
-        );
-        await delay(1000);
-
-        // Check if this worked
-        const newProviderValue = await safeOperation(
-          () =>
-            newBodyFrame.evaluate(() => {
-              const providerInput = document.querySelector("#selectedProvider") as HTMLInputElement
-              return providerInput ? providerInput.value : ""
-            }),
-          "",
-        )
-
-        console.log(`[DEBUG] Provider field value after keyboard selection: "${newProviderValue}"}"`)
-
-        if (newProviderValue) {
-          console.log(`[DEBUG] SUCCESS: Provider field populated via keyboard navigation`)
-        } else {
-          // Method 2: Try direct value assignment as last resort
-          console.log(`[DEBUG] Trying direct value assignment as final fallback...`)
-          await safeOperation(
-            () =>
-              newBodyFrame.evaluate(() => {
-                const providerInput = document.querySelector("#selectedProvider") as HTMLInputElement
-                if (providerInput) {
-                  providerInput.value = "Harmony Health LLC"
-                  providerInput.dispatchEvent(new Event("input", { bubbles: true }))
-                  providerInput.dispatchEvent(new Event("change", { bubbles: true }))
-                }
-              }),
-            null,
-          )
-
-          await delay(1000)
-
-          const finalProviderValue = await safeOperation(
-            () =>
-              newBodyFrame.evaluate(() => {
-                const providerInput = document.querySelector("#selectedProvider") as HTMLInputElement
-                return providerInput ? providerInput.value : ""
-              }),
-            "",
-          )
-
-          console.log(`[DEBUG] Provider field value after direct assignment: "${finalProviderValue}"`)
-        }
-      } catch (keyboardError) {
-        console.log(`[DEBUG] Keyboard navigation failed:`, keyboardError)
-      }
-    }
-
-    const finalProviderValue = await safeOperation(
-      () =>
-        newBodyFrame.evaluate(() => {
-          const providerInput = document.querySelector("#selectedProvider") as HTMLInputElement
-          return providerInput ? providerInput.value : ""
-        }),
-      "",
-    )
-
-    if (!finalProviderValue) {
-      console.log(`[DEBUG] WARNING: Provider field is still empty, but continuing to Next button`)
-    } else {
-      console.log(`[DEBUG] SUCCESS: Provider field has value: "${finalProviderValue}"`)
-    }
-
-    // Wait for selection to be processed
-    await delay(2000)
-
-    // Click Next button with correct selector
-    const nextButtonSelectors = [
-      "#landing-next",
-      'button[type="submit"]',
-      '.MuiButton-containedPrimary[type="submit"]',
-      'button:contains("Next")',
-    ]
-
-    let nextButtonClicked = false
-    for (const selector of nextButtonSelectors) {
-      try {
-        await safeOperation(() => newBodyFrame.waitForSelector(selector, { visible: true, timeout: 5000 }), null)
-        await safeOperation(() => newBodyFrame.click(selector), null)
-        console.log(`[DEBUG] SUCCESS: Clicked Next button with selector: ${selector}`)
-        nextButtonClicked = true
-        break
-      } catch (error) {
-        console.log(`[DEBUG] Failed to click Next button with selector: ${selector}`)
-        continue
-      }
-    }
-
-    if (!nextButtonClicked) {
-      throw new Error("Could not find or click Next button")
-    }
+    // Click Next button
+    await safeOperation(() => newBodyFrame.click("#landing-next"), null)
+    console.log(`[DEBUG] SUCCESS: Clicked Next button with selector: #landing-next`)
 
     // Wait for navigation
     try {
