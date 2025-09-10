@@ -7906,7 +7906,8 @@ export let isApiOnlyMode = false // Flag to track if we're in API-only mode
 
 // Constants
 const AVAILITY_URL = "https://apps.availity.com"
-const LOGIN_URL = "https://essentials.availity.com/static/public/onb/onboarding-ui-apps/availity-fr-ui/#/login"
+const LOGIN_URL = "https://apps.availity.com/availity/web/public.elegant.login"
+// const LOGIN_URL = "https://essentials.availity.com/static/public/onb/onboarding-ui-apps/availity-fr-ui/#/login"
 const REFERRALS_API_URL = "https://apps.availity.com/api/v1/proxy/anthem/provconn/v1/carecentral/ltss/referral/details"
 const TOTP_SECRET = process.env.TOTP_SECRET || "RU4SZCAW4UESMUQNCG3MXTWKXA"
 const MONITORING_INTERVAL_MS = 10000 // 10 seconds (changed from 30000)
@@ -8222,7 +8223,7 @@ export async function setupBot(): Promise<void> {
     await closeBrowser()
 
     browser = await puppeteer.launch({
-      headless: true,
+      headless: false,
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
@@ -8559,6 +8560,7 @@ export async function loginToAvaility(): Promise<boolean> {
       false,
     )
 
+    // Add this new code to handle the new login page format
     if (!isLoginPage) {
       console.log("Standard login form not found, checking for new login page format...")
 
@@ -8569,187 +8571,257 @@ export async function loginToAvaility(): Promise<boolean> {
             return (
               window.location.href.includes("/availity-fr-ui/#/login") ||
               document.querySelector('input[type="email"]') !== null ||
-              document.querySelector('input[placeholder*="Email"]') !== null ||
-              document.querySelector('input[placeholder*="email"]') !== null ||
-              document.querySelector("#username") !== null ||
-              document.querySelector("#password") !== null
+              document.querySelector('input[placeholder*="Email"]') !== null
             )
           }),
         false,
       )
 
       if (isNewLoginPage) {
-        console.log("New login page format detected, proceeding with new login flow...")
+        console.log("Detected new login page format, using alternative selectors...")
 
-        // Handle new login page format
-        await delay(2000)
+        // Try to find and fill email/username field
+        try {
+          const emailSelectors = [
+            'input[type="email"]',
+            'input[placeholder*="Email"]',
+            'input[placeholder*="Username"]',
+            'input[name="username"]',
+            'input[id*="email"]',
+            'input[id*="username"]',
+          ]
 
-        // Try different username field selectors for new format
-        const usernameSelectors = [
-          "#username",
-          'input[type="email"]',
-          'input[placeholder*="email"]',
-          'input[placeholder*="Email"]',
-        ]
-        let usernameFieldFound = false
+          for (const selector of emailSelectors) {
+            const emailField = await safeOperation(() => page!.$(selector), null)
+            if (emailField) {
+              await safeOperation(() => emailField.click(), null)
+              await safeOperation(() => emailField.type(process.env.AVAILITY_USERNAME || ""), null)
+              console.log("Entered username in new login form")
+              break
+            }
+          }
 
-        for (const selector of usernameSelectors) {
-          try {
+          // Try to find and click "Next" or "Continue" button
+          const nextButtonSelectors = [
+            'button[type="submit"]',
+            'button:has-text("Next")',
+            'button:has-text("Continue")',
+            "button.primary-button",
+            "button.btn-primary",
+          ]
+
+          for (const selector of nextButtonSelectors) {
+            const nextButton = await safeOperation(() => page!.$(selector), null)
+            if (nextButton) {
+              await safeOperation(() => nextButton.click(), null)
+              console.log("Clicked Next/Continue button")
+
+              // Wait for password field to appear
+              await delay(2000)
+              break
+            }
+          }
+
+          // Now try to find and fill password field
+          const passwordSelectors = [
+            'input[type="password"]',
+            'input[placeholder*="Password"]',
+            'input[name="password"]',
+            'input[id*="password"]',
+          ]
+
+          for (const selector of passwordSelectors) {
             await safeOperation(() => page!.waitForSelector(selector, { timeout: 5000 }), null)
-            await safeOperation(() => page!.type(selector, process.env.AVAILITY_USERNAME || ""), null)
-            console.log(`Username entered using selector: ${selector}`)
-            usernameFieldFound = true
-            break
-          } catch (error) {
-            continue
+            const passwordField = await safeOperation(() => page!.$(selector), null)
+            if (passwordField) {
+              await safeOperation(() => passwordField.click(), null)
+              await safeOperation(() => passwordField.type(process.env.AVAILITY_PASSWORD || ""), null)
+              console.log("Entered password in new login form")
+              break
+            }
           }
-        }
 
-        if (!usernameFieldFound) {
-          throw new Error("Could not find username field in new login format")
-        }
+          // Try to find and click login button
+          const loginButtonSelectors = [
+            'button[type="submit"]',
+            'button:has-text("Sign In")',
+            'button:has-text("Log In")',
+            'button:has-text("Login")',
+            "button.primary-button",
+            "button.btn-primary",
+          ]
 
-        // Try different password field selectors for new format
-        const passwordSelectors = ["#password", 'input[type="password"]']
-        let passwordFieldFound = false
+          for (const selector of loginButtonSelectors) {
+            const loginButton = await safeOperation(() => page!.$(selector), null)
+            if (loginButton) {
+              await safeOperation(() => loginButton.click(), null)
+              console.log("Clicked login button on new form")
+              break
+            }
+          }
 
-        for (const selector of passwordSelectors) {
+          // Wait for navigation to complete
           try {
-            await safeOperation(() => page!.waitForSelector(selector, { timeout: 5000 }), null)
-            await safeOperation(() => page!.type(selector, process.env.AVAILITY_PASSWORD || ""), null)
-            console.log(`Password entered using selector: ${selector}`)
-            passwordFieldFound = true
-            break
-          } catch (error) {
-            continue
+            await Promise.race([
+              withoutInterception(page!, async () => {
+                await page!.waitForNavigation({ timeout: 30000 })
+              }),
+              safeOperation(() => page!.waitForSelector('form[name="backupCodeForm"]', { timeout: 30000 }), null),
+              safeOperation(
+                () => page!.waitForSelector('form[name="authenticatorCodeForm"]', { timeout: 30000 }),
+                null,
+              ),
+              safeOperation(() => page!.waitForSelector(".top-applications", { timeout: 30000 }), null),
+            ])
+          } catch (navError) {
+            console.log("Navigation timeout after login attempt on new form")
           }
+        } catch (error) {
+          console.error("Error handling new login page format:", error)
         }
-
-        if (!passwordFieldFound) {
-          throw new Error("Could not find password field in new login format")
-        }
-
-        // Submit the form
-        const submitSelectors = [
-          'button[type="submit"]',
-          'input[type="submit"]',
-          'button:contains("Sign In")',
-          'button:contains("Login")',
-        ]
-        let formSubmitted = false
-
-        for (const selector of submitSelectors) {
-          try {
-            await safeOperation(() => page!.click(selector), null)
-            console.log(`Form submitted using selector: ${selector}`)
-            formSubmitted = true
-            break
-          } catch (error) {
-            continue
-          }
-        }
-
-        if (!formSubmitted) {
-          // Try pressing Enter as fallback
-          await safeOperation(() => page!.keyboard.press("Enter"), null)
-          console.log("Form submitted using Enter key")
-        }
-
-        // Wait for navigation or 2FA page
-        await delay(3000)
       } else {
-        throw new Error("Could not identify login page format")
+        // Take a screenshot for debugging
+        try {
+          await page!.screenshot({ path: "/tmp/login-page-debug.png" })
+          console.log("Saved login page screenshot for debugging")
+        } catch (screenshotErr) {
+          console.error("Failed to save debug screenshot:", screenshotErr)
+        }
+
+        throw new Error("Login form not found after navigation")
       }
-    } else {
-      // Handle original login format
-      console.log("Original login page format detected")
-
-      // ... existing login code for original format ...
-      await safeOperation(() => page!.waitForSelector("#userId", { timeout: 30000 }), null)
-      await safeOperation(() => page!.type("#userId", process.env.AVAILITY_USERNAME || ""), null)
-
-      await safeOperation(() => page!.waitForSelector("#password", { timeout: 30000 }), null)
-      await safeOperation(() => page!.type("#password", process.env.AVAILITY_PASSWORD || ""), null)
-
-      await safeOperation(() => page!.click("button[type='submit']"), null)
-      await delay(3000)
     }
 
-    // ... existing code for 2FA and subsequent steps ...
+    // Enter username and password
+    console.log("Entering credentials...")
+    // Wait for the login form to be visible
+    try {
+      await safeOperation(() => page!.waitForSelector("#userId", { visible: true, timeout: 10000 }), null)
+      await safeOperation(() => page!.type("#userId", process.env.AVAILITY_USERNAME || ""), null)
+      await safeOperation(() => page!.type("#password", process.env.AVAILITY_PASSWORD || ""), null)
+    } catch (error) {
+      console.log("Login form not found with #userId selector, trying alternative selectors...")
 
-    // Handle 2FA if present
-    const is2FAPage = await safeOperation(
+      // Try alternative selectors for username/password fields
+      const usernameSelectors = [
+        'input[name="userId"]',
+        'input[type="text"]',
+        'input[placeholder*="user"]',
+        'input[placeholder*="User"]',
+      ]
+      const passwordSelectors = [
+        'input[name="password"]',
+        'input[type="password"]',
+        'input[placeholder*="password"]',
+        'input[placeholder*="Password"]',
+      ]
+
+      let usernameEntered = false
+      let passwordEntered = false
+
+      // Try each username selector
+      for (const selector of usernameSelectors) {
+        try {
+          if (await safeOperation(() => page!.$(selector), null)) {
+            await safeOperation(() => page!.type(selector, process.env.AVAILITY_USERNAME || ""), null)
+            usernameEntered = true
+            break
+          }
+        } catch (err) {
+          // Continue to next selector
+        }
+      }
+
+      // Try each password selector
+      for (const selector of passwordSelectors) {
+        try {
+          if (await safeOperation(() => page!.$(selector), null)) {
+            await safeOperation(() => page!.type(selector, process.env.AVAILITY_PASSWORD || ""), null)
+            passwordEntered = true
+            break
+          }
+        } catch (err) {
+          // Continue to next selector
+        }
+      }
+
+      if (!usernameEntered || !passwordEntered) {
+        // Take a screenshot to debug
+        try {
+          await page!.screenshot({ path: "/tmp/login-debug.png" })
+          console.log("Saved login page screenshot for debugging")
+        } catch (screenshotErr) {
+          console.error("Failed to save debug screenshot:", screenshotErr)
+        }
+
+        throw new Error("Could not find login form fields")
+      }
+    }
+
+    // Click login button
+    await safeOperation(() => page!.click('button[type="submit"]'), null)
+
+    // Wait for either navigation to complete or for 2FA form to appear
+    try {
+      await Promise.race([
+        withoutInterception(page!, async () => {
+          await page!.waitForNavigation({ timeout: 50000 })
+        }),
+        safeOperation(() => page!.waitForSelector('form[name="backupCodeForm"]', { timeout: 50000 }), null),
+        safeOperation(() => page!.waitForSelector('form[name="authenticatorCodeForm"]', { timeout: 50000 }), null),
+        safeOperation(() => page!.waitForSelector(".top-applications", { timeout: 50000 }), null),
+      ])
+    } catch (navError) {
+      console.log("Navigation timeout or selector not found. Checking login status...")
+    }
+
+    // Check if we're logged in by looking for dashboard elements
+    const loginCheck = await safeOperation(
+      () =>
+        page!.evaluate(() => {
+          const dashboardElements =
+            document.querySelector(".top-applications") !== null ||
+            document.querySelector(".av-dashboard") !== null ||
+            document.querySelector(".dashboard-container") !== null
+
+          const cookieConsent = Array.from(document.querySelectorAll("h1, h2, h3, h4, h5, h6")).some((h) =>
+            h.textContent?.includes("Cookie Consent & Preferences"),
+          )
+
+          return dashboardElements || cookieConsent
+        }),
+      false,
+    )
+
+    // Check if we need to handle 2FA
+    console.log("Checking if 2FA authentication is required...")
+    const is2FARequired = await safeOperation(
       () =>
         page!.evaluate(() => {
           return (
-            document.querySelector("#authCode") !== null ||
-            document.querySelector('input[placeholder*="code"]') !== null ||
-            document.querySelector('input[placeholder*="Code"]') !== null ||
-            document.body.textContent?.includes("verification code") ||
-            document.body.textContent?.includes("Verification Code")
+            document.querySelector('form[name="backupCodeForm"]') !== null ||
+            document.querySelector('form[name="authenticatorCodeForm"]') !== null ||
+            document.querySelector('input[type="radio"][value*="authenticator"]') !== null ||
+            document.querySelector('input[type="radio"][value*="backup"]') !== null
           )
         }),
       false,
     )
 
-    if (is2FAPage) {
-      console.log("2FA page detected, entering TOTP code...")
+    if (is2FARequired) {
+      console.log("2FA authentication is required. Handling 2FA...")
+      await handle2FA(page!)
+      isLoggedIn = true
+    } else if (loginCheck) {
+      console.log("Already logged in - no 2FA required")
+      isLoggedIn = true
+    } else {
+      const currentUrl = page!.url()
+      console.log(`Current URL: ${currentUrl}`)
 
-      // Generate TOTP code
-      const totpCode = authenticator.generate(TOTP_SECRET)
-      console.log("Generated TOTP code")
-
-      // Try different 2FA field selectors
-      const totpSelectors = [
-        "#authCode",
-        'input[placeholder*="code"]',
-        'input[placeholder*="Code"]',
-        'input[type="text"]',
-      ]
-      let totpFieldFound = false
-
-      for (const selector of totpSelectors) {
-        try {
-          await safeOperation(() => page!.waitForSelector(selector, { timeout: 5000 }), null)
-          await safeOperation(() => page!.type(selector, totpCode), null)
-          console.log(`TOTP code entered using selector: ${selector}`)
-          totpFieldFound = true
-          break
-        } catch (error) {
-          continue
-        }
+      if (currentUrl.includes("login") || currentUrl.includes("authenticate")) {
+        throw new Error("Login failed - still on login page")
       }
-
-      if (!totpFieldFound) {
-        throw new Error("Could not find 2FA code field")
-      }
-
-      // Submit 2FA form
-      const submit2FASelectors = [
-        'button[type="submit"]',
-        'input[type="submit"]',
-        'button:contains("Verify")',
-        'button:contains("Submit")',
-      ]
-      let twoFASubmitted = false
-
-      for (const selector of submit2FASelectors) {
-        try {
-          await safeOperation(() => page!.click(selector), null)
-          console.log(`2FA form submitted using selector: ${selector}`)
-          twoFASubmitted = true
-          break
-        } catch (error) {
-          continue
-        }
-      }
-
-      if (!twoFASubmitted) {
-        await safeOperation(() => page!.keyboard.press("Enter"), null)
-        console.log("2FA form submitted using Enter key")
-      }
-
-      await delay(3000)
     }
 
     // Handle any cookie consent popup that might appear after login
@@ -9441,15 +9513,15 @@ async function navigateToCareCentral(page: Page): Promise<void> {
     }
 
     // Wait for the organization dropdown to be present in the iframe
-    await safeOperation(() => newBodyFrame.waitForSelector("#organizations", { timeout: 40000 }), null)
+    await safeOperation(() => newBodyFrame.waitForSelector("#organizations", { timeout: 60000 }), null)
 
     // Click on the organization dropdown
     await safeOperation(() => newBodyFrame.click("#organizations"), null)
-    await delay(1000)
+    await delay(500)
 
     // Type the organization name
     await safeOperation(() => newBodyFrame.click("#organizations"), null)
-    await delay(1000)
+    await delay(500)
 
     console.log(`[DEBUG] About to wait for .av-select selector...`)
     await captureDebugScreenshot(page, "before-av-select-wait")
