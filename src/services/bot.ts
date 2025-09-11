@@ -10048,25 +10048,25 @@ async function handleCookieConsent(page: Page): Promise<void> {
 // }
 
 async function navigateToCareCentral(page: Page): Promise<void> {
-  console.log("Navigating to Care Central...");
+  console.log("Navigating to Care Central...")
   try {
     // Wait for the dashboard to load
-    await safeOperation(() => page.waitForSelector("body", { timeout: 50000, visible: true }), null);
-    await delay(1000);
+    await safeOperation(() => page.waitForSelector("body", { timeout: 50000, visible: true }), null)
+    await delay(1000)
 
     // Try to find Care Central by text or fallback to coordinate click
-    let clicked = false;
+    let clicked = false
     const careCentralElements = await safeOperation(
       () =>
         page.evaluate(() => {
-          const allElements = Array.from(document.querySelectorAll("*"));
+          const allElements = Array.from(document.querySelectorAll("*"))
           return allElements
             .filter((el) => {
-              const text = el.textContent || "";
-              return text.includes("Care Central") && !text.includes("Care Central.");
+              const text = el.textContent || ""
+              return text.includes("Care Central") && !text.includes("Care Central.")
             })
             .map((el) => {
-              const rect = el.getBoundingClientRect();
+              const rect = el.getBoundingClientRect()
               return {
                 x: rect.x + rect.width / 2,
                 y: rect.y + rect.height / 2,
@@ -10075,89 +10075,89 @@ async function navigateToCareCentral(page: Page): Promise<void> {
                 text: el.textContent,
                 tagName: el.tagName,
                 id: el.id,
-              };
-            });
+              }
+            })
         }),
       [],
-    );
+    )
 
     for (const element of careCentralElements) {
       if (element.width > 50 && element.height > 50) {
         try {
-          await safeOperation(() => page.mouse.click(element.x, element.y), null);
-          clicked = true;
-          await delay(4000);
-          const currentUrl = page.url();
+          await safeOperation(() => page.mouse.click(element.x, element.y), null)
+          clicked = true
+          await delay(4000)
+          const currentUrl = page.url()
           if (currentUrl.includes("care-central") || currentUrl.includes("loadApp")) {
-            console.log("Successfully navigated via href pattern");
-            break;
+            console.log("Successfully navigated via href pattern")
+            break
           } else {
-            clicked = false;
+            clicked = false
           }
         } catch (error) {
-          console.log("Method 1 failed, trying next approach");
+          console.log("Method 1 failed, trying next approach")
         }
       }
     }
 
     if (!clicked) {
       // Try coordinate-based clicking
-      console.log("Trying coordinate-based clicking for first position");
+      console.log("Trying coordinate-based clicking for first position")
       const potentialPositions = [
         { x: 120, y: 400 },
         { x: 120, y: 430 },
         { x: 150, y: 400 },
         { x: 100, y: 400 },
         { x: 120, y: 370 },
-      ];
+      ]
       for (const pos of potentialPositions) {
         try {
-          console.log(`Trying coordinates: ${pos.x}, ${pos.y}`);
-          await safeOperation(() => page.mouse.click(pos.x, pos.y), null);
-          await delay(4000);
-          const currentUrl = page.url();
+          console.log(`Trying coordinates: ${pos.x}, ${pos.y}`)
+          await safeOperation(() => page.mouse.click(pos.x, pos.y), null)
+          await delay(4000)
+          const currentUrl = page.url()
           if (currentUrl.includes("care-central") || currentUrl.includes("loadApp")) {
-            clicked = true;
-            console.log("Successfully clicked via coordinates");
-            break;
+            clicked = true
+            console.log("Successfully clicked via coordinates")
+            break
           }
         } catch (error) {
-          console.log(`Coordinate click failed at ${pos.x}, ${pos.y}`);
+          console.log(`Coordinate click failed at ${pos.x}, ${pos.y}`)
         }
       }
     }
 
     if (!clicked) {
-      throw new Error("Failed to click on Care Central after trying all approaches");
+      throw new Error("Failed to click on Care Central after trying all approaches")
     }
 
-    console.log("Successfully navigated to Care Central");
+    console.log("Successfully navigated to Care Central")
 
     // Wait for the iframe to load
-    await safeOperation(() => page.waitForSelector("#newBodyFrame", { timeout: 40000 }), null);
+    await safeOperation(() => page.waitForSelector("#newBodyFrame", { timeout: 40000 }), null)
 
-    // Wait extra time for the Care Central app to load (fix for #providerName timeout)
-    await delay(5000);
+    // Wait extra time for the Care Central app to load
+    await delay(5000)
 
     // Get all frames and find the one with name="newBody"
-    const frames = page.frames();
-    const newBodyFrame = frames.find((frame) => frame.name() === "newBody");
+    const frames = page.frames()
+    const newBodyFrame = frames.find((frame) => frame.name() === "newBody")
     if (!newBodyFrame) {
-      throw new Error("Could not find newBody iframe");
+      throw new Error("Could not find newBody iframe")
     }
 
     // Wait for the form to load in the iframe
-    await safeOperation(() => newBodyFrame.waitForSelector("form", { timeout: 40000 }), null);
+    await safeOperation(() => newBodyFrame.waitForSelector("form", { timeout: 40000 }), null)
 
     // Wait for the organization dropdown to be present in the iframe
-    await safeOperation(() => newBodyFrame.waitForSelector("#organizations", { timeout: 40000 }), null);
+    await safeOperation(() => newBodyFrame.waitForSelector("#organizations", { timeout: 40000 }), null)
 
     // Click on the organization dropdown
-    await safeOperation(() => newBodyFrame.click("#organizations"), null);
-    await delay(1000);
+    await safeOperation(() => newBodyFrame.click("#organizations"), null)
+    await delay(1000)
 
     // Try multiple approaches to find and interact with the dropdown
-    let dropdownOpened = false;
+    let organizationSelected = false
     const dropdownSelectors = [
       ".av__option",
       ".av-select__option",
@@ -10167,235 +10167,147 @@ async function navigateToCareCentral(page: Page): Promise<void> {
       "li[role='option']",
       ".dropdown-item",
       ".select-option",
-    ];
+    ]
 
+    // First, wait for dropdown options to appear
+    let dropdownOpened = false
     for (const selector of dropdownSelectors) {
       try {
-        await safeOperation(() => newBodyFrame.waitForSelector(selector, { visible: true, timeout: 10000 }), null);
-        console.log(`Found dropdown options with selector: ${selector}`);
-        dropdownOpened = true;
-        break;
+        await safeOperation(() => newBodyFrame.waitForSelector(selector, { visible: true, timeout: 10000 }), null)
+        console.log(`Found dropdown options with selector: ${selector}`)
+        dropdownOpened = true
+
+        // Now try to select an organization option
+        const optionSelected = await safeOperation(
+          () =>
+            newBodyFrame.evaluate((sel) => {
+              const options = Array.from(document.querySelectorAll(sel))
+              console.log(`Found ${options.length} options with selector ${sel}`)
+
+              // First try to find Harmony Health LLC
+              const harmonyOption = options.find(
+                (option) => option.textContent && option.textContent.includes("Harmony Health LLC"),
+              )
+
+              if (harmonyOption) {
+                console.log("Found Harmony Health LLC option, clicking it")
+                ;(harmonyOption as HTMLElement).click()
+                return true
+              } else if (options.length > 0) {
+                console.log("Harmony Health LLC not found, clicking first option")
+                ;(options[0] as HTMLElement).click()
+                return true
+              }
+              return false
+            }, selector),
+          false,
+        )
+
+        if (optionSelected) {
+          organizationSelected = true
+          console.log(`Successfully selected organization option with selector: ${selector}`)
+          break
+        }
       } catch (error) {
-        console.log(`Selector ${selector} not found, trying next...`);
+        console.log(`Selector ${selector} not found, trying next...`)
       }
     }
 
-    if (!dropdownOpened) {
-      console.log("Dropdown options not found, trying to click dropdown again...");
-      await safeOperation(() => newBodyFrame.click("#organizations"), null);
-      await delay(1000);
+    if (!organizationSelected) {
+      console.log("Dropdown options not found, trying to click dropdown again...")
+      await safeOperation(() => newBodyFrame.click("#organizations"), null)
+      await delay(2000)
+
+      // Try again with more aggressive approach
       for (const selector of dropdownSelectors) {
         try {
-          await safeOperation(() => newBodyFrame.waitForSelector(selector, { visible: true, timeout: 10000 }), null);
-          console.log(`Found dropdown options with selector: ${selector} on second attempt`);
-          dropdownOpened = true;
-          break;
+          const optionSelected = await safeOperation(
+            () =>
+              newBodyFrame.evaluate((sel) => {
+                const options = Array.from(document.querySelectorAll(sel))
+                if (options.length > 0) {
+                  console.log(`Clicking first option from ${options.length} options with selector ${sel}`)
+                  ;(options[0] as HTMLElement).click()
+                  return true
+                }
+                return false
+              }, selector),
+            false,
+          )
+
+          if (optionSelected) {
+            organizationSelected = true
+            console.log(`Successfully selected organization on second attempt with selector: ${selector}`)
+            break
+          }
         } catch (error) {
-          console.log(`Selector ${selector} still not found on second attempt`);
+          console.log(`Second attempt with selector ${selector} failed`)
         }
       }
     }
 
-    if (!dropdownOpened) {
-      const dropdownElements = await safeOperation(
-        () =>
-          newBodyFrame.evaluate(() => {
-            const possibleSelectors = [
-              'div[class*="option"]',
-              'li[class*="option"]',
-              'div[class*="select"]',
-              'div[class*="dropdown"]',
-              'div[role="option"]',
-              'li[role="option"]',
-            ];
-            for (const sel of possibleSelectors) {
-              const elements = document.querySelectorAll(sel);
-              if (elements.length > 0) {
-                return Array.from(elements).map((el) => ({
-                  selector: sel,
-                  text: el.textContent?.trim() || "",
-                  visible: (el as HTMLElement).offsetParent !== null,
-                }));
-              }
-            }
-            return [];
-          }),
-        [],
-      );
-      console.log("Found dropdown elements:", dropdownElements);
+    if (!organizationSelected) {
+      throw new Error("Failed to select organization from dropdown after multiple attempts")
     }
 
-    // Look specifically for Harmony Health LLC option with multiple approaches
-    const harmonyOption = await safeOperation(
-      () =>
-        newBodyFrame.evaluate(() => {
-          const selectors = [
-            ".av__option",
-            ".av-select__option",
-            "div[role='option']",
-            "li[role='option']",
-            "div[class*='option']",
-          ];
-          for (const selector of selectors) {
-            const options = Array.from(document.querySelectorAll(selector));
-            const harmonyOption = options.find(
-              (option) => option.textContent && option.textContent.includes("Harmony Health LLC"),
-            );
-            if (harmonyOption) return true;
-          }
-          return false;
-        }),
-      false,
-    );
-
-    if (harmonyOption) {
-      await safeOperation(
-        () =>
-          newBodyFrame.evaluate(() => {
-            const selectors = [
-              ".av__option",
-              ".av-select__option",
-              "div[role='option']",
-              "li[role='option']",
-              "div[class*='option']",
-            ];
-            for (const selector of selectors) {
-              const options = Array.from(document.querySelectorAll(selector));
-              const harmonyOption = options.find(
-                (option) => option.textContent && option.textContent.includes("Harmony Health LLC"),
-              );
-              if (harmonyOption) {
-                (harmonyOption as HTMLElement).click();
-                return true;
-              }
-            }
-            return false;
-          }),
-        null,
-      );
-    } else {
-      await safeOperation(
-        () =>
-          newBodyFrame.evaluate(() => {
-            const selectors = [
-              ".av__option",
-              ".av-select__option",
-              "div[role='option']",
-              "li[role='option']",
-              "div[class*='option']",
-            ];
-            for (const selector of selectors) {
-              const options = Array.from(document.querySelectorAll(selector));
-              if (options.length > 0) {
-                (options[0] as HTMLElement).click();
-                return true;
-              }
-            }
-            return false;
-          }),
-        null,
-      );
-    }
-
-    await delay(1000);
+    // Wait for the selection to be processed and provider field to become available
+    await delay(3000)
 
     // Wait for provider field to become enabled and click it
-    // Add extra delay to allow the page to update after org selection
-    await delay(2000);
-    await safeOperation(() => newBodyFrame.waitForSelector("#providerName", { timeout: 40000 }), null);
-    await safeOperation(() => newBodyFrame.click("#providerName"), null);
-    await delay(1000);
+    await safeOperation(() => newBodyFrame.waitForSelector("#providerName", { timeout: 40000 }), null)
+    await safeOperation(() => newBodyFrame.click("#providerName"), null)
+    await delay(1000)
 
-    // Wait for provider dropdown options to appear with multiple selector attempts
-    let providerDropdownOpened = false;
+    // Wait for provider dropdown options to appear
+    let providerSelected = false
     for (const selector of dropdownSelectors) {
       try {
-        await safeOperation(() => newBodyFrame.waitForSelector(selector, { visible: true, timeout: 10000 }), null);
-        console.log(`Found provider dropdown options with selector: ${selector}`);
-        providerDropdownOpened = true;
-        break;
-      } catch (error) {
-        console.log(`Provider selector ${selector} not found, trying next...`);
-      }
-    }
+        await safeOperation(() => newBodyFrame.waitForSelector(selector, { visible: true, timeout: 10000 }), null)
+        console.log(`Found provider dropdown options with selector: ${selector}`)
 
-    // Look specifically for Harmony Health provider option
-    const harmonyProviderOption = await safeOperation(
-      () =>
-        newBodyFrame.evaluate(() => {
-          const selectors = [
-            ".av__option",
-            ".av-select__option",
-            "div[role='option']",
-            "li[role='option']",
-            "div[class*='option']",
-          ];
-          for (const selector of selectors) {
-            const options = Array.from(document.querySelectorAll(selector));
-            const harmonyOption = options.find(
-              (option) =>
-                option.textContent &&
-                (option.textContent.includes("Harmony Health") || option.textContent.includes("HARMONY HEALTH")),
-            );
-            if (harmonyOption) return true;
-          }
-          return false;
-        }),
-      false,
-    );
+        // Try to select provider option
+        const providerOptionSelected = await safeOperation(
+          () =>
+            newBodyFrame.evaluate((sel) => {
+              const options = Array.from(document.querySelectorAll(sel))
+              console.log(`Found ${options.length} provider options with selector ${sel}`)
 
-    if (harmonyProviderOption) {
-      await safeOperation(
-        () =>
-          newBodyFrame.evaluate(() => {
-            const selectors = [
-              ".av__option",
-              ".av-select__option",
-              "div[role='option']",
-              "li[role='option']",
-              "div[class*='option']",
-            ];
-            for (const selector of selectors) {
-              const options = Array.from(document.querySelectorAll(selector));
+              // First try to find Harmony Health provider
               const harmonyOption = options.find(
                 (option) =>
                   option.textContent &&
                   (option.textContent.includes("Harmony Health") || option.textContent.includes("HARMONY HEALTH")),
-              );
+              )
+
               if (harmonyOption) {
-                (harmonyOption as HTMLElement).click();
-                return true;
+                console.log("Found Harmony Health provider option, clicking it")
+                ;(harmonyOption as HTMLElement).click()
+                return true
+              } else if (options.length > 0) {
+                console.log("Harmony Health provider not found, clicking first option")
+                ;(options[0] as HTMLElement).click()
+                return true
               }
-            }
-            return false;
-          }),
-        null,
-      );
-    } else {
-      await safeOperation(
-        () =>
-          newBodyFrame.evaluate(() => {
-            const selectors = [
-              ".av__option",
-              ".av-select__option",
-              "div[role='option']",
-              "li[role='option']",
-              "div[class*='option']",
-            ];
-            for (const selector of selectors) {
-              const options = Array.from(document.querySelectorAll(selector));
-              if (options.length > 0) {
-                (options[0] as HTMLElement).click();
-                return true;
-              }
-            }
-            return false;
-          }),
-        null,
-      );
+              return false
+            }, selector),
+          false,
+        )
+
+        if (providerOptionSelected) {
+          providerSelected = true
+          console.log(`Successfully selected provider option with selector: ${selector}`)
+          break
+        }
+      } catch (error) {
+        console.log(`Provider selector ${selector} not found, trying next...`)
+      }
     }
 
-    await delay(1000);
+    if (!providerSelected) {
+      throw new Error("Failed to select provider from dropdown after multiple attempts")
+    }
+
+    await delay(1000)
 
     // Try multiple selectors for the Next button
     const nextButtonSelectors = [
@@ -10406,104 +10318,108 @@ async function navigateToCareCentral(page: Page): Promise<void> {
       "button:contains('Continue')",
       ".btn-primary",
       ".next-button",
-    ];
+    ]
 
-    let nextButtonClicked = false;
+    let nextButtonClicked = false
     for (const selector of nextButtonSelectors) {
       try {
-        await safeOperation(() => newBodyFrame.click(selector), null);
-        console.log(`Successfully clicked Next button with selector: ${selector}`);
-        nextButtonClicked = true;
-        break;
+        await safeOperation(() => newBodyFrame.click(selector), null)
+        console.log(`Successfully clicked Next button with selector: ${selector}`)
+        nextButtonClicked = true
+        break
       } catch (error) {
-        console.log(`Next button selector ${selector} failed, trying next...`);
+        console.log(`Next button selector ${selector} failed, trying next...`)
       }
     }
 
     if (!nextButtonClicked) {
-      await safeOperation(
+      // Try to find Next button by text content
+      const nextButtonFound = await safeOperation(
         () =>
           newBodyFrame.evaluate(() => {
-            const buttons = Array.from(document.querySelectorAll('button, input[type="submit"]'));
+            const buttons = Array.from(document.querySelectorAll('button, input[type="submit"]'))
             const nextButton = buttons.find((btn) => {
-              const text = btn.textContent?.toLowerCase() || "";
-              const value = (btn as HTMLInputElement).value?.toLowerCase() || "";
+              const text = btn.textContent?.toLowerCase() || ""
+              const value = (btn as HTMLInputElement).value?.toLowerCase() || ""
               return (
                 text.includes("next") ||
                 text.includes("continue") ||
                 value.includes("next") ||
                 value.includes("continue")
-              );
-            });
+              )
+            })
             if (nextButton) {
-              (nextButton as HTMLElement).click();
-              return true;
+              console.log("Found Next button by text content, clicking it")
+              ;(nextButton as HTMLElement).click()
+              return true
             }
-            return false;
+            return false
           }),
-        null,
-      );
+        false,
+      )
+
+      if (!nextButtonFound) {
+        throw new Error("Failed to find and click Next button after multiple attempts")
+      }
     }
 
     // Wait for navigation or for the referrals button to appear
-    let navSuccess = false;
+    let navSuccess = false
     try {
-      await page.waitForNavigation({ waitUntil: "networkidle0", timeout: 30000 });
-      navSuccess = true;
+      await page.waitForNavigation({ waitUntil: "networkidle0", timeout: 30000 })
+      navSuccess = true
     } catch (navError) {
-      // Navigation timeout after Next, but this might be expected
-      console.log("Navigation timeout after clicking Next, continuing anyway");
+      console.log("Navigation timeout after clicking Next, continuing anyway")
     }
 
-    // Wait extra for the next page to load (fix for referrals button not found)
-    await delay(4000);
+    // Wait extra for the next page to load
+    await delay(4000)
 
     // Now we need to click on the Referrals button inside the iframe
-    // Get the updated frames after navigation
-    const updatedFrames = page.frames();
-    const updatedNewBodyFrame = updatedFrames.find((frame) => frame.name() === "newBody");
+    const updatedFrames = page.frames()
+    const updatedNewBodyFrame = updatedFrames.find((frame) => frame.name() === "newBody")
     if (!updatedNewBodyFrame) {
-      throw new Error("Could not find newBody iframe after navigation");
+      throw new Error("Could not find newBody iframe after navigation")
     }
-    currentFrame = updatedNewBodyFrame;
+    currentFrame = updatedNewBodyFrame
 
     // Look for the Referrals button with data-id="referral"
     try {
       await safeOperation(
         () => currentFrame!.waitForSelector('button[data-id="referral"]', { visible: true, timeout: 10000 }),
         null,
-      );
-      await safeOperation(() => currentFrame!.click('button[data-id="referral"]'), null);
-      await delay(4000);
+      )
+      await safeOperation(() => currentFrame!.click('button[data-id="referral"]'), null)
+      await delay(4000)
     } catch (error) {
       const clicked = await safeOperation(
         () =>
           currentFrame!.evaluate(() => {
-            const buttons = Array.from(document.querySelectorAll("button"));
+            const buttons = Array.from(document.querySelectorAll("button"))
             const referralButton = buttons.find(
               (button) => button.textContent && button.textContent.includes("Referrals"),
-            );
+            )
             if (referralButton) {
-              (referralButton as HTMLElement).click();
-              return true;
+              ;(referralButton as HTMLElement).click()
+              return true
             }
-            return false;
+            return false
           }),
         false,
-      );
+      )
       if (!clicked) {
-        throw new Error("Could not find Referrals button by text");
+        throw new Error("Could not find Referrals button by text")
       }
-      await delay(4000);
+      await delay(4000)
     }
 
     // Now extract member information from the referrals page
-    await extractMemberInformation(currentFrame);
+    await extractMemberInformation(currentFrame)
   } catch (error) {
-    console.error("Error navigating to Care Central:", error);
-    currentFrame = null;
-    isLoggedIn = false;
-    throw error;
+    console.error("Error navigating to Care Central:", error)
+    currentFrame = null
+    isLoggedIn = false
+    throw error
   }
 }
 
