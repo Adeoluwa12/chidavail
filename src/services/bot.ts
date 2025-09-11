@@ -9449,6 +9449,35 @@ async function navigateToCareCentral(page: Page): Promise<void> {
     // Wait for iframe to be fully loaded first
     await delay(3000)
 
+    console.log("[DEBUG] Navigating to Care Central form URL within iframe...")
+    try {
+      // Try to navigate to the Care Central form URL directly within the iframe
+      const careCentralFormUrls = [
+        "https://apps.availity.com/public/apps/home/#/loadApp?appUrl=https%3A%2F%2Fessentials.availity.com%2Fstatic%2F%3Fweb%2Ffrom-p%2F%2Fpayer-spaces%2Fanthem-care-central%2F%3F%3Fspaceoid%3D300-k8Dj6sQJHcq",
+        "https://essentials.availity.com/static/?web/from-p//payer-spaces/anthem-care-central/??spaceoid=300-k8Dj6sQJHcq",
+      ]
+
+      let navigated = false
+      for (const url of careCentralFormUrls) {
+        try {
+          await safeOperation(() => newBodyFrame.goto(url, { waitUntil: "networkidle0", timeout: 30000 }), null)
+          console.log(`[DEBUG] Successfully navigated to: ${url}`)
+          navigated = true
+          break
+        } catch (error) {
+          console.log(`[DEBUG] Failed to navigate to ${url}:`, error)
+          continue
+        }
+      }
+
+      if (navigated) {
+        // Wait for the form to load after navigation
+        await delay(5000)
+      }
+    } catch (error) {
+      console.log("[DEBUG] Direct navigation failed, trying to find form in current content")
+    }
+
     // Try multiple selectors that might match the Care Central form
     const formSelectors = [
       "form",
@@ -9494,36 +9523,99 @@ async function navigateToCareCentral(page: Page): Promise<void> {
       )
       console.log("[DEBUG] Iframe content:", iframeContent.substring(0, 500) + "...")
 
-      // Wait longer and try again with a more generic approach
-      console.log("[DEBUG] Trying to wait for any interactive element...")
-      const interactiveSelectors = ["input", "select", "button", "textarea", "[onclick]", "[onchange]", "a[href]"]
+      console.log("[DEBUG] Looking for navigation elements to reach the form...")
+      const navigationElements = await safeOperation(
+        () =>
+          newBodyFrame.evaluate(() => {
+            const elements = Array.from(document.querySelectorAll("a, button, [onclick]"))
+            return elements
+              .filter((el) => {
+                const text = el.textContent?.toLowerCase() || ""
+                const href = (el as HTMLAnchorElement).href || ""
+                return (
+                  text.includes("manage") ||
+                  text.includes("organization") ||
+                  text.includes("provider") ||
+                  href.includes("manage") ||
+                  text.includes("setup") ||
+                  text.includes("configure")
+                )
+              })
+              .map((el) => ({
+                text: el.textContent?.trim(),
+                href: (el as HTMLAnchorElement).href,
+                tagName: el.tagName,
+                className: el.className,
+              }))
+          }),
+        [],
+      )
 
-      for (const selector of interactiveSelectors) {
+      console.log("[DEBUG] Found navigation elements:", navigationElements)
+
+      // Try clicking on promising navigation elements
+      for (const element of navigationElements) {
         try {
-          await safeOperation(() => newBodyFrame.waitForSelector(selector, { timeout: 10000 }), null)
-          console.log(`[DEBUG] Found interactive element: ${selector}`)
-          formFound = true
-          break
+          if (element.text) {
+            await safeOperation(() => newBodyFrame.click(`text=${element.text}`), null)
+            console.log(`[DEBUG] Clicked on navigation element: ${element.text}`)
+            await delay(3000)
+
+            // Check if form elements are now available
+            const hasForm = await safeOperation(
+              () => newBodyFrame.$('select, [role="combobox"], input[type="text"]'),
+              null,
+            )
+
+            if (hasForm) {
+              console.log("[DEBUG] Form found after navigation!")
+              formFound = true
+              break
+            }
+          }
         } catch (error) {
           continue
+        }
+      }
+
+      // Wait longer and try again with a more generic approach
+      if (!formFound) {
+        console.log("[DEBUG] Trying to wait for any interactive element...")
+        const interactiveSelectors = ["input", "select", "button", "textarea", "[onclick]", "[onchange]", "a[href]"]
+
+        for (const selector of interactiveSelectors) {
+          try {
+            await safeOperation(() => newBodyFrame.waitForSelector(selector, { timeout: 10000 }), null)
+            console.log(`[DEBUG] Found interactive element: ${selector}`)
+            formFound = true
+            break
+          } catch (error) {
+            continue
+          }
         }
       }
     }
 
     if (!formFound) {
-      throw new Error("Could not find any form or interactive elements in the iframe after trying multiple selectors")
+      throw new Error("Could not find any form or interactive elements in the iframe after trying multiple approaches")
     }
 
     console.log("[DEBUG] Looking for organization dropdown...")
 
-    // Try multiple selectors for the organization dropdown
     const orgSelectors = [
       "#organizations",
       "select[name*='organization']",
       "select[id*='organization']",
+      "select[name*='Organization']",
+      "select[id*='Organization']",
       ".select2-container:first-of-type",
       "[role='combobox']:first-of-type",
       "select:first-of-type",
+      // Additional selectors based on the screenshot
+      "select[aria-label*='Organization']",
+      "select[placeholder*='Organization']",
+      ".MuiSelect-root:first-of-type",
+      ".ant-select:first-of-type",
     ]
 
     let orgDropdownFound = false
@@ -9553,14 +9645,20 @@ async function navigateToCareCentral(page: Page): Promise<void> {
 
     console.log("[DEBUG] Looking for Tax ID dropdown...")
 
-    // Try multiple selectors for the Tax ID dropdown
     const taxIdSelectors = [
       "#taxId",
       "select[name*='tax']",
       "select[id*='tax']",
+      "select[name*='Tax']",
+      "select[id*='Tax']",
       ".select2-container:nth-of-type(2)",
       "[role='combobox']:nth-of-type(2)",
       "select:nth-of-type(2)",
+      // Additional selectors for Tax ID
+      "select[aria-label*='Tax']",
+      "select[placeholder*='Tax']",
+      ".MuiSelect-root:nth-of-type(2)",
+      ".ant-select:nth-of-type(2)",
     ]
 
     let taxIdDropdownFound = false
@@ -9573,13 +9671,10 @@ async function navigateToCareCentral(page: Page): Promise<void> {
         await safeOperation(() => newBodyFrame.click(selector), null)
         await delay(1000)
 
-        // Look for available tax ID options and select the first valid one
-        const taxIdSelected = await selectTaxIdOption(newBodyFrame)
+        await selectTaxIdOption(newBodyFrame)
 
-        if (taxIdSelected) {
-          taxIdDropdownFound = true
-          break
-        }
+        taxIdDropdownFound = true
+        break
       } catch (error) {
         console.log(`[DEBUG] Tax ID selector ${selector} failed`)
         continue
@@ -9592,14 +9687,20 @@ async function navigateToCareCentral(page: Page): Promise<void> {
 
     console.log("[DEBUG] Looking for provider dropdown...")
 
-    // Try multiple selectors for the provider dropdown
     const providerSelectors = [
       "#provider",
       "select[name*='provider']",
       "select[id*='provider']",
+      "select[name*='Provider']",
+      "select[id*='Provider']",
       ".select2-container:nth-of-type(3)",
       "[role='combobox']:nth-of-type(3)",
       "select:nth-of-type(3)",
+      // Additional selectors for Provider
+      "select[aria-label*='Provider']",
+      "select[placeholder*='Provider']",
+      ".MuiSelect-root:nth-of-type(3)",
+      ".ant-select:nth-of-type(3)",
     ]
 
     let providerDropdownFound = false
@@ -9629,7 +9730,6 @@ async function navigateToCareCentral(page: Page): Promise<void> {
 
     console.log("[DEBUG] Looking for Next button...")
 
-    // Try multiple selectors for the Next button
     const nextButtonSelectors = [
       "button:contains('Next')",
       "input[value='Next']",
@@ -9637,6 +9737,12 @@ async function navigateToCareCentral(page: Page): Promise<void> {
       "button[type='submit']",
       ".btn:contains('Next')",
       "button.btn-primary",
+      // Additional selectors for Next button
+      "button[aria-label*='Next']",
+      ".MuiButton-root:contains('Next')",
+      ".ant-btn:contains('Next')",
+      "#next-button",
+      ".next-btn",
     ]
 
     let nextButtonFound = false
@@ -9647,7 +9753,7 @@ async function navigateToCareCentral(page: Page): Promise<void> {
 
         // Click the Next button
         await safeOperation(() => newBodyFrame.click(selector), null)
-        console.log("[DEBUG] Successfully clicked Next button")
+        console.log("[DEBUG] Clicked Next button successfully")
 
         nextButtonFound = true
         break
@@ -9658,18 +9764,134 @@ async function navigateToCareCentral(page: Page): Promise<void> {
     }
 
     if (!nextButtonFound) {
-      // Try clicking by text content
-      const nextButtonClicked = await safeOperation(
-        () =>
-          newBodyFrame.evaluate(() => {
-            const buttons = Array.from(document.querySelectorAll('button, input[type="submit"], input[type="button"]'))
-            const nextButton = buttons.find(
-              (btn) =>
-                btn.textContent?.toLowerCase().includes("next") ||
-                (btn as HTMLInputElement).value?.toLowerCase().includes("next"),
+      console.log("[DEBUG] Next button not found")
+    }
+
+    console.log("[DEBUG] Care Central form submission completed")
+
+    async function selectTaxIdOption(frame: Frame): Promise<void> {
+      try {
+        // Wait for dropdown options to appear
+        await delay(1000)
+
+        const optionSelectors = [
+          'option:not([value="undefined"]):not([value=""]):not(:contains("undefined"))',
+          '[role="option"]:not(:contains("undefined"))',
+          '.MuiMenuItem-root:not(:contains("undefined"))',
+          '.ant-select-item:not(:contains("undefined"))',
+        ]
+
+        for (const selector of optionSelectors) {
+          try {
+            const options = await safeOperation(
+              () =>
+                frame.$$eval(selector, (elements) =>
+                  elements
+                    .filter((el) => {
+                      const text = el.textContent?.trim() || ""
+                      return text && text !== "undefined" && text !== "" && text !== "Select..."
+                    })
+                    .map((el) => ({
+                      text: el.textContent?.trim(),
+                      value: (el as HTMLOptionElement).value || "",
+                    })),
+                ),
+              [],
             )
-            if (nextButton) {
-              ;(nextButton as HTMLElement).click()
+
+            if (options.length > 0) {
+              // Select the first valid option
+              const firstOption = options[0]
+              await safeOperation(() => frame.click(`${selector}:first-of-type`), null)
+              console.log(`[DEBUG] Selected Tax ID option: ${firstOption.text}`)
+              return
+            }
+          } catch (error) {
+            continue
+          }
+        }
+
+        console.log("[DEBUG] No valid Tax ID options found")
+      } catch (error) {
+        console.log("[DEBUG] Error selecting Tax ID option:", error)
+      }
+    }
+
+    // Helper function to select a dropdown option by text
+    async function selectDropdownOption(frame: Frame, optionText: string): Promise<void> {
+      try {
+        // Wait for dropdown options to appear
+        await delay(1000)
+
+        const optionSelectors = [
+          'option:contains("' + optionText + '")',
+          '[role="option"]:contains("' + optionText + '")',
+          '.MuiMenuItem-root:contains("' + optionText + '")',
+          '.ant-select-item:contains("' + optionText + '")',
+        ]
+
+        let optionFound = false
+        for (const selector of optionSelectors) {
+          try {
+            await safeOperation(() => frame.waitForSelector(selector, { timeout: 5000 }), null)
+            console.log(`[DEBUG] Found option with selector: ${selector}`)
+
+            // Click on the option
+            await safeOperation(() => frame.click(selector), null)
+            console.log(`[DEBUG] Selected option: ${optionText}`)
+
+            optionFound = true
+            break
+          } catch (error) {
+            console.log(`[DEBUG] Option selector ${selector} failed`)
+            continue
+          }
+        }
+
+        if (!optionFound) {
+          console.log(`[DEBUG] Option "${optionText}" not found`)
+        }
+      } catch (error) {
+        console.log("[DEBUG] Error selecting dropdown option:", error)
+      }
+    }
+
+    // Now we need to click on the Referrals button inside the iframe
+    // Get the updated frames after navigation
+    const updatedFrames = page.frames()
+    const updatedNewBodyFrame = updatedFrames.find((frame) => frame.name() === "newBody")
+
+    if (!updatedNewBodyFrame) {
+      throw new Error("Could not find newBody iframe after navigation")
+    }
+
+    // Store the current frame for future use
+    currentFrame = updatedNewBodyFrame
+
+    // Look for the Referrals button with data-id="referral"
+    try {
+      // Wait for the button to be visible
+      await safeOperation(
+        () => currentFrame!.waitForSelector('button[data-id="referral"]', { visible: true, timeout: 10000 }),
+        null,
+      )
+
+      // Click the Referrals button
+      await safeOperation(() => currentFrame!.click('button[data-id="referral"]'), null)
+
+      // Wait for the page to update after clicking
+      await delay(4000)
+    } catch (error) {
+      // Try alternative approach - evaluate and click directly in the frame
+      const clicked = await safeOperation(
+        () =>
+          currentFrame!.evaluate(() => {
+            const buttons = Array.from(document.querySelectorAll("button"))
+            const referralButton = buttons.find(
+              (button) => button.textContent && button.textContent.includes("Referrals"),
+            )
+            if (referralButton) {
+              ;(referralButton as HTMLElement).click()
               return true
             }
             return false
@@ -9677,173 +9899,22 @@ async function navigateToCareCentral(page: Page): Promise<void> {
         false,
       )
 
-      if (nextButtonClicked) {
-        console.log("[DEBUG] Successfully clicked Next button via text search")
-      } else {
-        console.log("[DEBUG] Next button not found")
+      if (!clicked) {
+        throw new Error("Could not find Referrals button by text")
       }
+
+      // Wait for the page to update
+      await delay(4000)
     }
 
-    await delay(3000) // Wait for navigation after clicking Next
-
-    console.log("[DEBUG] Care Central form submission completed")
+    // Now extract member information from the referrals page
+    await extractMemberInformation(currentFrame)
   } catch (error) {
     console.error("Error navigating to Care Central:", error)
     await captureDebugScreenshot(page, "navigation-error")
+    currentFrame = null
+    isLoggedIn = false
     throw error
-  }
-}
-
-async function selectDropdownOption(frame: any, optionText: string): Promise<boolean> {
-  try {
-    // Try different approaches to select the option
-
-    // Approach 1: Look for Material-UI style options
-    const materialUISelectors = ['[role="option"]', ".MuiMenuItem-root", ".MuiListItem-root", '[role="menuitem"]']
-
-    for (const selector of materialUISelectors) {
-      try {
-        await safeOperation(() => frame.waitForSelector(selector, { visible: true, timeout: 5000 }), null)
-
-        const optionSelected = await safeOperation(
-          () =>
-            frame.evaluate(
-              (sel: string, text: string) => {
-                const options = Array.from(document.querySelectorAll(sel))
-                const targetOption = options.find((option) => option.textContent && option.textContent.includes(text))
-                if (targetOption) {
-                  ;(targetOption as HTMLElement).click()
-                  return true
-                }
-                return false
-              },
-              selector,
-              optionText,
-            ),
-          false,
-        )
-
-        if (optionSelected) {
-          console.log(`[DEBUG] Selected option "${optionText}" using ${selector}`)
-          return true
-        }
-      } catch (error) {
-        continue
-      }
-    }
-
-    // Approach 2: Try select2 dropdown options
-    const select2Options = await safeOperation(
-      () =>
-        frame.evaluate((text: string) => {
-          const select2Results = document.querySelector(".select2-results")
-          if (select2Results) {
-            const options = Array.from(select2Results.querySelectorAll("li"))
-            const targetOption = options.find((option) => option.textContent && option.textContent.includes(text))
-            if (targetOption) {
-              ;(targetOption as HTMLElement).click()
-              return true
-            }
-          }
-          return false
-        }, optionText),
-      false,
-    )
-
-    if (select2Options) {
-      console.log(`[DEBUG] Selected option "${optionText}" using select2`)
-      return true
-    }
-
-    // Approach 3: Try regular select options
-    const regularSelect = await safeOperation(
-      () =>
-        frame.evaluate((text: string) => {
-          const selects = Array.from(document.querySelectorAll("select"))
-          for (const select of selects) {
-            const options = Array.from(select.querySelectorAll("option"))
-            const targetOption = options.find((option) => option.textContent && option.textContent.includes(text))
-            if (targetOption) {
-              select.value = (targetOption as HTMLOptionElement).value
-              select.dispatchEvent(new Event("change", { bubbles: true }))
-              return true
-            }
-          }
-          return false
-        }, optionText),
-      false,
-    )
-
-    if (regularSelect) {
-      console.log(`[DEBUG] Selected option "${optionText}" using regular select`)
-      return true
-    }
-
-    return false
-  } catch (error) {
-    console.log(`[DEBUG] Error selecting option "${optionText}":`, error)
-    return false
-  }
-}
-
-async function selectTaxIdOption(frame: any): Promise<boolean> {
-  try {
-    // Look for available tax ID options and select the first valid one (not "undefined")
-    const taxIdSelected = await safeOperation(
-      () =>
-        frame.evaluate(() => {
-          // Try Material-UI options first
-          const materialOptions = Array.from(document.querySelectorAll('[role="option"], .MuiMenuItem-root'))
-          for (const option of materialOptions) {
-            const text = option.textContent || ""
-            if (text && text !== "undefined" && text.trim() !== "" && text !== "Select...") {
-              ;(option as HTMLElement).click()
-              return true
-            }
-          }
-
-          // Try select2 options
-          const select2Results = document.querySelector(".select2-results")
-          if (select2Results) {
-            const options = Array.from(select2Results.querySelectorAll("li"))
-            for (const option of options) {
-              const text = option.textContent || ""
-              if (text && text !== "undefined" && text.trim() !== "" && text !== "Select...") {
-                ;(option as HTMLElement).click()
-                return true
-              }
-            }
-          }
-
-          // Try regular select options
-          const selects = Array.from(document.querySelectorAll("select"))
-          for (const select of selects) {
-            const options = Array.from(select.querySelectorAll("option"))
-            for (const option of options) {
-              const text = option.textContent || ""
-              const value = (option as HTMLOptionElement).value
-              if (text && text !== "undefined" && text.trim() !== "" && text !== "Select..." && value) {
-                select.value = value
-                select.dispatchEvent(new Event("change", { bubbles: true }))
-                return true
-              }
-            }
-          }
-
-          return false
-        }),
-      false,
-    )
-
-    if (taxIdSelected) {
-      console.log("[DEBUG] Successfully selected a Tax ID option")
-      return true
-    }
-
-    return false
-  } catch (error) {
-    console.log("[DEBUG] Error selecting Tax ID option:", error)
-    return false
   }
 }
 
