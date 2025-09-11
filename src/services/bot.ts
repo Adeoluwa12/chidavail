@@ -10048,49 +10048,25 @@ async function handleCookieConsent(page: Page): Promise<void> {
 // }
 
 async function navigateToCareCentral(page: Page): Promise<void> {
-  console.log("Navigating to Care Central...")
+  console.log("Navigating to Care Central...");
   try {
     // Wait for the dashboard to load
-    await safeOperation(() => page.waitForSelector("body", { timeout: 50000, visible: true }), null)
+    await safeOperation(() => page.waitForSelector("body", { timeout: 50000, visible: true }), null);
+    await delay(1000);
 
-    // Wait for a bit to ensure the page is fully loaded
-    await delay(1000)
-
-    // Look for "My Top Applications" heading first
-    const myTopAppsHeadingSelectors = [
-      'h1:has-text("My Top Applications")',
-      'h2:has-text("My Top Applications")',
-      'h3:has-text("My Top Applications")',
-      'h4:has-text("My Top Applications")',
-      'div:has-text("My Top Applications")',
-      'span:has-text("My Top Applications")',
-    ]
-
-    let myTopAppsHeading = null
-    for (const selector of myTopAppsHeadingSelectors) {
-      try {
-        myTopAppsHeading = await safeOperation(() => page.$(selector), null)
-        if (myTopAppsHeading) {
-          console.log("Found My Top Applications section")
-          break
-        }
-      } catch (error) {
-        // Try next selector
-      }
-    }
-
-    // Now try to find Care Central by searching for all elements containing that text
+    // Try to find Care Central by text or fallback to coordinate click
+    let clicked = false;
     const careCentralElements = await safeOperation(
       () =>
         page.evaluate(() => {
-          const allElements = Array.from(document.querySelectorAll("*"))
+          const allElements = Array.from(document.querySelectorAll("*"));
           return allElements
             .filter((el) => {
-              const text = el.textContent || ""
-              return text.includes("Care Central") && !text.includes("Care Central.")
+              const text = el.textContent || "";
+              return text.includes("Care Central") && !text.includes("Care Central.");
             })
             .map((el) => {
-              const rect = el.getBoundingClientRect()
+              const rect = el.getBoundingClientRect();
               return {
                 x: rect.x + rect.width / 2,
                 y: rect.y + rect.height / 2,
@@ -10099,147 +10075,89 @@ async function navigateToCareCentral(page: Page): Promise<void> {
                 text: el.textContent,
                 tagName: el.tagName,
                 id: el.id,
-              }
-            })
+              };
+            });
         }),
       [],
-    )
+    );
 
-    // Try to click the most likely element (filter for reasonable size and position)
-    let clicked = false
     for (const element of careCentralElements) {
-      // Look for elements that are likely to be clickable tiles (reasonable size)
       if (element.width > 50 && element.height > 50) {
         try {
-          await safeOperation(() => page.mouse.click(element.x, element.y), null)
-          clicked = true
-
-          // Wait a bit to see if navigation happens
-          await delay(4000)
-
-          // Check if we've navigated away from the dashboard
-          const currentUrl = page.url()
-
+          await safeOperation(() => page.mouse.click(element.x, element.y), null);
+          clicked = true;
+          await delay(4000);
+          const currentUrl = page.url();
           if (currentUrl.includes("care-central") || currentUrl.includes("loadApp")) {
-            console.log("Successfully navigated via href pattern")
-            break
+            console.log("Successfully navigated via href pattern");
+            break;
           } else {
-            clicked = false
+            clicked = false;
           }
         } catch (error) {
-          console.log("Method 1 failed, trying next approach")
+          console.log("Method 1 failed, trying next approach");
         }
       }
     }
 
-    // If we still haven't clicked successfully, try a different approach
     if (!clicked) {
-      // Try to find the Wellpoint image
-      const wellpointImages = await safeOperation(
-        () =>
-          page.evaluate(() => {
-            const images = Array.from(document.querySelectorAll("img"))
-            return images
-              .filter((img) => {
-                const src = img.src || ""
-                const alt = img.alt || ""
-                return (
-                  src.includes("wellpoint") ||
-                  alt.includes("Wellpoint") ||
-                  src.includes("Wellpoint") ||
-                  alt.includes("wellpoint")
-                )
-              })
-              .map((img) => {
-                const rect = img.getBoundingClientRect()
-                return {
-                  x: rect.x + rect.width / 2,
-                  y: rect.y + rect.height / 2,
-                  width: rect.width,
-                  height: rect.height,
-                  src: img.src,
-                  alt: img.alt,
-                }
-              })
-          }),
-        [],
-      )
-
-      // Try clicking on a Wellpoint image
-      for (const img of wellpointImages) {
-        try {
-          await safeOperation(() => page.mouse.click(img.x, img.y), null)
-          clicked = true
-          await delay(4000)
-          break
-        } catch (error) {
-          console.log("Method 2 failed, trying next approach")
-        }
-      }
-    }
-
-    // Last resort - try clicking at fixed coordinates where Care Central is likely to be
-    if (!clicked) {
-      console.log("Trying coordinate-based clicking for first position")
-      // Updated coordinates for first position instead of second
+      // Try coordinate-based clicking
+      console.log("Trying coordinate-based clicking for first position");
       const potentialPositions = [
-        { x: 120, y: 400 }, // First position coordinates
+        { x: 120, y: 400 },
         { x: 120, y: 430 },
         { x: 150, y: 400 },
         { x: 100, y: 400 },
-        { x: 120, y: 370 }, // Slightly higher
-      ]
-
+        { x: 120, y: 370 },
+      ];
       for (const pos of potentialPositions) {
         try {
-          console.log(`Trying coordinates: ${pos.x}, ${pos.y}`)
-          await safeOperation(() => page.mouse.click(pos.x, pos.y), null)
-          await delay(4000)
-
-          // Check if we've navigated away
-          const currentUrl = page.url()
+          console.log(`Trying coordinates: ${pos.x}, ${pos.y}`);
+          await safeOperation(() => page.mouse.click(pos.x, pos.y), null);
+          await delay(4000);
+          const currentUrl = page.url();
           if (currentUrl.includes("care-central") || currentUrl.includes("loadApp")) {
-            clicked = true
-            console.log("Successfully clicked via coordinates")
-            break
+            clicked = true;
+            console.log("Successfully clicked via coordinates");
+            break;
           }
         } catch (error) {
-          console.log(`Coordinate click failed at ${pos.x}, ${pos.y}`)
+          console.log(`Coordinate click failed at ${pos.x}, ${pos.y}`);
         }
       }
     }
 
     if (!clicked) {
-      throw new Error("Failed to click on Care Central after trying all approaches")
+      throw new Error("Failed to click on Care Central after trying all approaches");
     }
 
-    console.log("Successfully navigated to Care Central")
+    console.log("Successfully navigated to Care Central");
 
     // Wait for the iframe to load
-    await safeOperation(() => page.waitForSelector("#newBodyFrame", { timeout: 40000 }), null)
+    await safeOperation(() => page.waitForSelector("#newBodyFrame", { timeout: 40000 }), null);
+
+    // Wait extra time for the Care Central app to load (fix for #providerName timeout)
+    await delay(5000);
 
     // Get all frames and find the one with name="newBody"
-    const frames = page.frames()
-    const newBodyFrame = frames.find((frame) => frame.name() === "newBody")
-
+    const frames = page.frames();
+    const newBodyFrame = frames.find((frame) => frame.name() === "newBody");
     if (!newBodyFrame) {
-      throw new Error("Could not find newBody iframe")
+      throw new Error("Could not find newBody iframe");
     }
 
     // Wait for the form to load in the iframe
-    await safeOperation(() => newBodyFrame.waitForSelector("form", { timeout: 40000 }), null)
+    await safeOperation(() => newBodyFrame.waitForSelector("form", { timeout: 40000 }), null);
 
     // Wait for the organization dropdown to be present in the iframe
-    await safeOperation(() => newBodyFrame.waitForSelector("#organizations", { timeout: 40000 }), null)
+    await safeOperation(() => newBodyFrame.waitForSelector("#organizations", { timeout: 40000 }), null);
 
     // Click on the organization dropdown
-    await safeOperation(() => newBodyFrame.click("#organizations"), null)
-    await delay(1000) // Increased delay to allow dropdown to fully open
+    await safeOperation(() => newBodyFrame.click("#organizations"), null);
+    await delay(1000);
 
     // Try multiple approaches to find and interact with the dropdown
-    let dropdownOpened = false
-
-    // First, try to wait for dropdown options with multiple possible selectors
+    let dropdownOpened = false;
     const dropdownSelectors = [
       ".av__option",
       ".av-select__option",
@@ -10249,44 +10167,39 @@ async function navigateToCareCentral(page: Page): Promise<void> {
       "li[role='option']",
       ".dropdown-item",
       ".select-option",
-    ]
+    ];
 
     for (const selector of dropdownSelectors) {
       try {
-        await safeOperation(() => newBodyFrame.waitForSelector(selector, { visible: true, timeout: 10000 }), null)
-        console.log(`Found dropdown options with selector: ${selector}`)
-        dropdownOpened = true
-        break
+        await safeOperation(() => newBodyFrame.waitForSelector(selector, { visible: true, timeout: 10000 }), null);
+        console.log(`Found dropdown options with selector: ${selector}`);
+        dropdownOpened = true;
+        break;
       } catch (error) {
-        console.log(`Selector ${selector} not found, trying next...`)
+        console.log(`Selector ${selector} not found, trying next...`);
       }
     }
 
-    // If no dropdown options found, try clicking the dropdown again
     if (!dropdownOpened) {
-      console.log("Dropdown options not found, trying to click dropdown again...")
-      await safeOperation(() => newBodyFrame.click("#organizations"), null)
-      await delay(1000)
-
-      // Try waiting for options again
+      console.log("Dropdown options not found, trying to click dropdown again...");
+      await safeOperation(() => newBodyFrame.click("#organizations"), null);
+      await delay(1000);
       for (const selector of dropdownSelectors) {
         try {
-          await safeOperation(() => newBodyFrame.waitForSelector(selector, { visible: true, timeout: 10000 }), null)
-          console.log(`Found dropdown options with selector: ${selector} on second attempt`)
-          dropdownOpened = true
-          break
+          await safeOperation(() => newBodyFrame.waitForSelector(selector, { visible: true, timeout: 10000 }), null);
+          console.log(`Found dropdown options with selector: ${selector} on second attempt`);
+          dropdownOpened = true;
+          break;
         } catch (error) {
-          console.log(`Selector ${selector} still not found on second attempt`)
+          console.log(`Selector ${selector} still not found on second attempt`);
         }
       }
     }
 
     if (!dropdownOpened) {
-      // Try alternative approach - look for any visible dropdown elements
       const dropdownElements = await safeOperation(
         () =>
           newBodyFrame.evaluate(() => {
-            // Look for any elements that might be dropdown options
             const possibleSelectors = [
               'div[class*="option"]',
               'li[class*="option"]',
@@ -10294,53 +10207,48 @@ async function navigateToCareCentral(page: Page): Promise<void> {
               'div[class*="dropdown"]',
               'div[role="option"]',
               'li[role="option"]',
-            ]
-
+            ];
             for (const sel of possibleSelectors) {
-              const elements = document.querySelectorAll(sel)
+              const elements = document.querySelectorAll(sel);
               if (elements.length > 0) {
                 return Array.from(elements).map((el) => ({
                   selector: sel,
                   text: el.textContent?.trim() || "",
                   visible: (el as HTMLElement).offsetParent !== null,
-                }))
+                }));
               }
             }
-            return []
+            return [];
           }),
         [],
-      )
-
-      console.log("Found dropdown elements:", dropdownElements)
+      );
+      console.log("Found dropdown elements:", dropdownElements);
     }
 
     // Look specifically for Harmony Health LLC option with multiple approaches
     const harmonyOption = await safeOperation(
       () =>
         newBodyFrame.evaluate(() => {
-          // Try multiple selectors for options
           const selectors = [
             ".av__option",
             ".av-select__option",
             "div[role='option']",
             "li[role='option']",
             "div[class*='option']",
-          ]
-
+          ];
           for (const selector of selectors) {
-            const options = Array.from(document.querySelectorAll(selector))
+            const options = Array.from(document.querySelectorAll(selector));
             const harmonyOption = options.find(
               (option) => option.textContent && option.textContent.includes("Harmony Health LLC"),
-            )
-            if (harmonyOption) return true
+            );
+            if (harmonyOption) return true;
           }
-          return false
+          return false;
         }),
       false,
-    )
+    );
 
     if (harmonyOption) {
-      // Click on the Harmony Health LLC option
       await safeOperation(
         () =>
           newBodyFrame.evaluate(() => {
@@ -10350,24 +10258,22 @@ async function navigateToCareCentral(page: Page): Promise<void> {
               "div[role='option']",
               "li[role='option']",
               "div[class*='option']",
-            ]
-
+            ];
             for (const selector of selectors) {
-              const options = Array.from(document.querySelectorAll(selector))
+              const options = Array.from(document.querySelectorAll(selector));
               const harmonyOption = options.find(
                 (option) => option.textContent && option.textContent.includes("Harmony Health LLC"),
-              )
+              );
               if (harmonyOption) {
-                ;(harmonyOption as HTMLElement).click()
-                return true
+                (harmonyOption as HTMLElement).click();
+                return true;
               }
             }
-            return false
+            return false;
           }),
         null,
-      )
+      );
     } else {
-      // If Harmony Health LLC not found, click the first available option
       await safeOperation(
         () =>
           newBodyFrame.evaluate(() => {
@@ -10377,38 +10283,39 @@ async function navigateToCareCentral(page: Page): Promise<void> {
               "div[role='option']",
               "li[role='option']",
               "div[class*='option']",
-            ]
-
+            ];
             for (const selector of selectors) {
-              const options = Array.from(document.querySelectorAll(selector))
+              const options = Array.from(document.querySelectorAll(selector));
               if (options.length > 0) {
-                ;(options[0] as HTMLElement).click()
-                return true
+                (options[0] as HTMLElement).click();
+                return true;
               }
             }
-            return false
+            return false;
           }),
         null,
-      )
+      );
     }
 
-    await delay(1000) // Wait for selection to process
+    await delay(1000);
 
     // Wait for provider field to become enabled and click it
-    await safeOperation(() => newBodyFrame.waitForSelector("#providerName", { timeout: 30000 }), null)
-    await safeOperation(() => newBodyFrame.click("#providerName"), null)
-    await delay(1000)
+    // Add extra delay to allow the page to update after org selection
+    await delay(2000);
+    await safeOperation(() => newBodyFrame.waitForSelector("#providerName", { timeout: 40000 }), null);
+    await safeOperation(() => newBodyFrame.click("#providerName"), null);
+    await delay(1000);
 
     // Wait for provider dropdown options to appear with multiple selector attempts
-    let providerDropdownOpened = false
+    let providerDropdownOpened = false;
     for (const selector of dropdownSelectors) {
       try {
-        await safeOperation(() => newBodyFrame.waitForSelector(selector, { visible: true, timeout: 10000 }), null)
-        console.log(`Found provider dropdown options with selector: ${selector}`)
-        providerDropdownOpened = true
-        break
+        await safeOperation(() => newBodyFrame.waitForSelector(selector, { visible: true, timeout: 10000 }), null);
+        console.log(`Found provider dropdown options with selector: ${selector}`);
+        providerDropdownOpened = true;
+        break;
       } catch (error) {
-        console.log(`Provider selector ${selector} not found, trying next...`)
+        console.log(`Provider selector ${selector} not found, trying next...`);
       }
     }
 
@@ -10422,24 +10329,22 @@ async function navigateToCareCentral(page: Page): Promise<void> {
             "div[role='option']",
             "li[role='option']",
             "div[class*='option']",
-          ]
-
+          ];
           for (const selector of selectors) {
-            const options = Array.from(document.querySelectorAll(selector))
+            const options = Array.from(document.querySelectorAll(selector));
             const harmonyOption = options.find(
               (option) =>
                 option.textContent &&
                 (option.textContent.includes("Harmony Health") || option.textContent.includes("HARMONY HEALTH")),
-            )
-            if (harmonyOption) return true
+            );
+            if (harmonyOption) return true;
           }
-          return false
+          return false;
         }),
       false,
-    )
+    );
 
     if (harmonyProviderOption) {
-      // Click on the Harmony Health provider option
       await safeOperation(
         () =>
           newBodyFrame.evaluate(() => {
@@ -10449,26 +10354,24 @@ async function navigateToCareCentral(page: Page): Promise<void> {
               "div[role='option']",
               "li[role='option']",
               "div[class*='option']",
-            ]
-
+            ];
             for (const selector of selectors) {
-              const options = Array.from(document.querySelectorAll(selector))
+              const options = Array.from(document.querySelectorAll(selector));
               const harmonyOption = options.find(
                 (option) =>
                   option.textContent &&
                   (option.textContent.includes("Harmony Health") || option.textContent.includes("HARMONY HEALTH")),
-              )
+              );
               if (harmonyOption) {
-                ;(harmonyOption as HTMLElement).click()
-                return true
+                (harmonyOption as HTMLElement).click();
+                return true;
               }
             }
-            return false
+            return false;
           }),
         null,
-      )
+      );
     } else {
-      // If Harmony Health not found, click the first provider option
       await safeOperation(
         () =>
           newBodyFrame.evaluate(() => {
@@ -10478,23 +10381,21 @@ async function navigateToCareCentral(page: Page): Promise<void> {
               "div[role='option']",
               "li[role='option']",
               "div[class*='option']",
-            ]
-
+            ];
             for (const selector of selectors) {
-              const options = Array.from(document.querySelectorAll(selector))
+              const options = Array.from(document.querySelectorAll(selector));
               if (options.length > 0) {
-                ;(options[0] as HTMLElement).click()
-                return true
+                (options[0] as HTMLElement).click();
+                return true;
               }
             }
-            return false
+            return false;
           }),
         null,
-      )
+      );
     }
 
-    // Wait for selection to be processed
-    await delay(1000)
+    await delay(1000);
 
     // Try multiple selectors for the Next button
     const nextButtonSelectors = [
@@ -10505,112 +10406,104 @@ async function navigateToCareCentral(page: Page): Promise<void> {
       "button:contains('Continue')",
       ".btn-primary",
       ".next-button",
-    ]
+    ];
 
-    let nextButtonClicked = false
+    let nextButtonClicked = false;
     for (const selector of nextButtonSelectors) {
       try {
-        await safeOperation(() => newBodyFrame.click(selector), null)
-        console.log(`Successfully clicked Next button with selector: ${selector}`)
-        nextButtonClicked = true
-        break
+        await safeOperation(() => newBodyFrame.click(selector), null);
+        console.log(`Successfully clicked Next button with selector: ${selector}`);
+        nextButtonClicked = true;
+        break;
       } catch (error) {
-        console.log(`Next button selector ${selector} failed, trying next...`)
+        console.log(`Next button selector ${selector} failed, trying next...`);
       }
     }
 
     if (!nextButtonClicked) {
-      // Try to find and click any button that looks like a Next/Continue button
       await safeOperation(
         () =>
           newBodyFrame.evaluate(() => {
-            const buttons = Array.from(document.querySelectorAll('button, input[type="submit"]'))
+            const buttons = Array.from(document.querySelectorAll('button, input[type="submit"]'));
             const nextButton = buttons.find((btn) => {
-              const text = btn.textContent?.toLowerCase() || ""
-              const value = (btn as HTMLInputElement).value?.toLowerCase() || ""
+              const text = btn.textContent?.toLowerCase() || "";
+              const value = (btn as HTMLInputElement).value?.toLowerCase() || "";
               return (
                 text.includes("next") ||
                 text.includes("continue") ||
                 value.includes("next") ||
                 value.includes("continue")
-              )
-            })
+              );
+            });
             if (nextButton) {
-              ;(nextButton as HTMLElement).click()
-              return true
+              (nextButton as HTMLElement).click();
+              return true;
             }
-            return false
+            return false;
           }),
         null,
-      )
+      );
     }
 
-    // Wait for navigation
+    // Wait for navigation or for the referrals button to appear
+    let navSuccess = false;
     try {
-      await page.waitForNavigation({ waitUntil: "networkidle0", timeout: 30000 })
+      await page.waitForNavigation({ waitUntil: "networkidle0", timeout: 30000 });
+      navSuccess = true;
     } catch (navError) {
       // Navigation timeout after Next, but this might be expected
-      console.log("Navigation timeout after clicking Next, continuing anyway")
+      console.log("Navigation timeout after clicking Next, continuing anyway");
     }
+
+    // Wait extra for the next page to load (fix for referrals button not found)
+    await delay(4000);
 
     // Now we need to click on the Referrals button inside the iframe
     // Get the updated frames after navigation
-    const updatedFrames = page.frames()
-    const updatedNewBodyFrame = updatedFrames.find((frame) => frame.name() === "newBody")
-
+    const updatedFrames = page.frames();
+    const updatedNewBodyFrame = updatedFrames.find((frame) => frame.name() === "newBody");
     if (!updatedNewBodyFrame) {
-      throw new Error("Could not find newBody iframe after navigation")
+      throw new Error("Could not find newBody iframe after navigation");
     }
-
-    // Store the current frame for future use
-    currentFrame = updatedNewBodyFrame
+    currentFrame = updatedNewBodyFrame;
 
     // Look for the Referrals button with data-id="referral"
     try {
-      // Wait for the button to be visible
       await safeOperation(
         () => currentFrame!.waitForSelector('button[data-id="referral"]', { visible: true, timeout: 10000 }),
         null,
-      )
-
-      // Click the Referrals button
-      await safeOperation(() => currentFrame!.click('button[data-id="referral"]'), null)
-
-      // Wait for the page to update after clicking
-      await delay(4000)
+      );
+      await safeOperation(() => currentFrame!.click('button[data-id="referral"]'), null);
+      await delay(4000);
     } catch (error) {
-      // Try alternative approach - evaluate and click directly in the frame
       const clicked = await safeOperation(
         () =>
           currentFrame!.evaluate(() => {
-            const buttons = Array.from(document.querySelectorAll("button"))
+            const buttons = Array.from(document.querySelectorAll("button"));
             const referralButton = buttons.find(
               (button) => button.textContent && button.textContent.includes("Referrals"),
-            )
+            );
             if (referralButton) {
-              ;(referralButton as HTMLElement).click()
-              return true
+              (referralButton as HTMLElement).click();
+              return true;
             }
-            return false
+            return false;
           }),
         false,
-      )
-
+      );
       if (!clicked) {
-        throw new Error("Could not find Referrals button by text")
+        throw new Error("Could not find Referrals button by text");
       }
-
-      // Wait for the page to update
-      await delay(4000)
+      await delay(4000);
     }
 
     // Now extract member information from the referrals page
-    await extractMemberInformation(currentFrame)
+    await extractMemberInformation(currentFrame);
   } catch (error) {
-    console.error("Error navigating to Care Central:", error)
-    currentFrame = null
-    isLoggedIn = false
-    throw error
+    console.error("Error navigating to Care Central:", error);
+    currentFrame = null;
+    isLoggedIn = false;
+    throw error;
   }
 }
 
