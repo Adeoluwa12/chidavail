@@ -10047,6 +10047,11 @@ async function handleCookieConsent(page: Page): Promise<void> {
 //   }
 // }
 
+
+
+// Function to extract member information from the referrals page
+
+
 async function navigateToCareCentral(page: Page): Promise<void> {
   console.log("Navigating to Care Central...")
   try {
@@ -10250,43 +10255,101 @@ async function navigateToCareCentral(page: Page): Promise<void> {
       throw new Error("Failed to select organization from dropdown after multiple attempts")
     }
 
-    // Wait for the selection to be processed and provider field to become available
     await delay(3000)
+    console.log("Looking for Tax ID dropdown...")
 
-    // Wait for provider field to become enabled and click it
-    await safeOperation(() => newBodyFrame.waitForSelector("#providerName", { timeout: 40000 }), null)
-    await safeOperation(() => newBodyFrame.click("#providerName"), null)
-    await delay(1000)
+    // Try to find and click Tax ID dropdown
+    const taxIdSelectors = ["select[name*='tax']", "select[name*='Tax']", "#taxId", "#tax_id", "select:nth-of-type(2)"]
+    let taxIdSelected = false
 
-    // Wait for provider dropdown options to appear
-    let providerSelected = false
-    for (const selector of dropdownSelectors) {
+    for (const selector of taxIdSelectors) {
       try {
-        await safeOperation(() => newBodyFrame.waitForSelector(selector, { visible: true, timeout: 10000 }), null)
-        console.log(`Found provider dropdown options with selector: ${selector}`)
+        await safeOperation(() => newBodyFrame.waitForSelector(selector, { timeout: 10000 }), null)
+        await safeOperation(() => newBodyFrame.click(selector), null)
+        console.log(`Found Tax ID dropdown with selector: ${selector}`)
+        await delay(1000)
+
+        // Try to select a tax ID option
+        const taxIdOptionSelected = await safeOperation(
+          () =>
+            newBodyFrame.evaluate((sel) => {
+              const dropdown = document.querySelector(sel) as HTMLSelectElement
+              if (dropdown && dropdown.options.length > 1) {
+                // Select the first non-empty option (skip "undefined" or empty options)
+                for (let i = 1; i < dropdown.options.length; i++) {
+                  if (dropdown.options[i].value && dropdown.options[i].value !== "undefined") {
+                    dropdown.selectedIndex = i
+                    dropdown.dispatchEvent(new Event("change", { bubbles: true }))
+                    console.log(`Selected Tax ID option: ${dropdown.options[i].text}`)
+                    return true
+                  }
+                }
+              }
+              return false
+            }, selector),
+          false,
+        )
+
+        if (taxIdOptionSelected) {
+          taxIdSelected = true
+          console.log(`Successfully selected Tax ID with selector: ${selector}`)
+          break
+        }
+      } catch (error) {
+        console.log(`Tax ID selector ${selector} not found, trying next...`)
+      }
+    }
+
+    if (!taxIdSelected) {
+      console.log("Could not find Tax ID dropdown, continuing to provider selection...")
+    }
+
+    await delay(3000)
+    console.log("Looking for Provider dropdown...")
+
+    // Try multiple selectors for the provider dropdown
+    const providerSelectors = [
+      "select[name*='provider']",
+      "select[name*='Provider']",
+      "#provider",
+      "#providerId",
+      "select:nth-of-type(3)",
+      "select:last-of-type",
+    ]
+
+    let providerSelected = false
+    for (const selector of providerSelectors) {
+      try {
+        await safeOperation(() => newBodyFrame.waitForSelector(selector, { timeout: 10000 }), null)
+        await safeOperation(() => newBodyFrame.click(selector), null)
+        console.log(`Found Provider dropdown with selector: ${selector}`)
+        await delay(1000)
 
         // Try to select provider option
         const providerOptionSelected = await safeOperation(
           () =>
             newBodyFrame.evaluate((sel) => {
-              const options = Array.from(document.querySelectorAll(sel))
-              console.log(`Found ${options.length} provider options with selector ${sel}`)
-
-              // First try to find Harmony Health provider
-              const harmonyOption = options.find(
-                (option) =>
-                  option.textContent &&
-                  (option.textContent.includes("Harmony Health") || option.textContent.includes("HARMONY HEALTH")),
-              )
-
-              if (harmonyOption) {
-                console.log("Found Harmony Health provider option, clicking it")
-                ;(harmonyOption as HTMLElement).click()
-                return true
-              } else if (options.length > 0) {
-                console.log("Harmony Health provider not found, clicking first option")
-                ;(options[0] as HTMLElement).click()
-                return true
+              const dropdown = document.querySelector(sel) as HTMLSelectElement
+              if (dropdown && dropdown.options.length > 1) {
+                // Look for Harmony Health option
+                for (let i = 0; i < dropdown.options.length; i++) {
+                  const optionText = dropdown.options[i].text.toLowerCase()
+                  if (optionText.includes("harmony health") || optionText.includes("harmony")) {
+                    dropdown.selectedIndex = i
+                    dropdown.dispatchEvent(new Event("change", { bubbles: true }))
+                    console.log(`Selected Provider option: ${dropdown.options[i].text}`)
+                    return true
+                  }
+                }
+                // If Harmony Health not found, select first non-empty option
+                for (let i = 1; i < dropdown.options.length; i++) {
+                  if (dropdown.options[i].value) {
+                    dropdown.selectedIndex = i
+                    dropdown.dispatchEvent(new Event("change", { bubbles: true }))
+                    console.log(`Selected first available Provider option: ${dropdown.options[i].text}`)
+                    return true
+                  }
+                }
               }
               return false
             }, selector),
@@ -10295,7 +10358,7 @@ async function navigateToCareCentral(page: Page): Promise<void> {
 
         if (providerOptionSelected) {
           providerSelected = true
-          console.log(`Successfully selected provider option with selector: ${selector}`)
+          console.log(`Successfully selected provider with selector: ${selector}`)
           break
         }
       } catch (error) {
@@ -10309,7 +10372,6 @@ async function navigateToCareCentral(page: Page): Promise<void> {
 
     await delay(1000)
 
-    // Try multiple selectors for the Next button
     const nextButtonSelectors = [
       "button.btn.btn-primary",
       "button[type='submit']",
@@ -10318,6 +10380,8 @@ async function navigateToCareCentral(page: Page): Promise<void> {
       "button:contains('Continue')",
       ".btn-primary",
       ".next-button",
+      "button[value='Next']",
+      "input[value='Next']",
     ]
 
     let nextButtonClicked = false
@@ -10423,7 +10487,6 @@ async function navigateToCareCentral(page: Page): Promise<void> {
   }
 }
 
-// Function to extract member information from the referrals page
 async function extractMemberInformation(frame: Frame): Promise<MemberData[]> {
   console.log("Extracting member information from referrals page...")
   try {
