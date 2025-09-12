@@ -8460,7 +8460,8 @@ export let isApiOnlyMode = false // Flag to track if we're in API-only mode
 
 // Constants
 const AVAILITY_URL = "https://apps.availity.com"
-const LOGIN_URL = "https://apps.availity.com/availity/web/public.elegant.login"
+const LOGIN_URL = "https://essentials.availity.com/static/public/onb/onboarding-ui-apps/availity-fr-ui/#/login"
+// const LOGIN_URL = "https://apps.availity.com/availity/web/public.elegant.login"
 const REFERRALS_API_URL = "https://apps.availity.com/api/v1/proxy/anthem/provconn/v1/carecentral/ltss/referral/details"
 const TOTP_SECRET = process.env.TOTP_SECRET || "RU4SZCAW4UESMUQNCG3MXTWKXA"
 const MONITORING_INTERVAL_MS = 10000 // 10 seconds (changed from 30000)
