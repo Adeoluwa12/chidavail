@@ -8777,7 +8777,7 @@ export async function setupBot(): Promise<void> {
     await closeBrowser()
 
     browser = await puppeteer.launch({
-      headless: true,
+      headless: false,
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
@@ -10052,7 +10052,6 @@ async function handleCookieConsent(page: Page): Promise<void> {
 
 // Function to extract member information from the referrals page
 
-
 async function navigateToCareCentral(page: Page): Promise<void> {
   console.log("Navigating to Care Central...")
   try {
@@ -10258,151 +10257,180 @@ async function navigateToCareCentral(page: Page): Promise<void> {
 
     await delay(3000)
 
-    console.log("Looking for Tax ID dropdown...")
+    console.log("Tax ID is automatically selected, skipping to provider selection...")
 
-    const taxIdSelectors = [
-      "div:contains('Tax ID') + div", // Look for div after Tax ID label
-      "[class*='tax'][class*='select']", // Custom select with tax in class name
-      "[class*='Tax'][class*='Select']", // Custom select with Tax in class name
-      "div[class*='dropdown']:nth-of-type(2)", // Second dropdown on page
-      "div[role='combobox']:nth-of-type(2)", // Second combobox role
-      ".css-1hwfws3", // Common react-select class
-      ".css-1pahdxg-control", // Another react-select class
-      "div:has(> div:contains('undefined'))", // Div containing "undefined" text
-    ]
-    let taxIdSelected = false
-
-    for (const selector of taxIdSelectors) {
-      try {
-        const taxIdElement = await safeOperation(() => newBodyFrame.waitForSelector(selector, { timeout: 5000 }), null)
-        if (taxIdElement) {
-          await safeOperation(() => newBodyFrame.click(selector), null)
-          console.log(`Found Tax ID dropdown with selector: ${selector}`)
-          await delay(1000)
-
-          const taxIdOptionSelectors = [
-            "li[role='option']",
-            "div[role='option']",
-            ".css-1n7v3ny-option", // react-select option class
-            "[class*='option']",
-            "div:contains('Tax ID')",
-          ]
-
-          for (const optionSelector of taxIdOptionSelectors) {
-            try {
-              const options = await safeOperation(() => newBodyFrame.$$(optionSelector), [])
-              if (options && options.length > 0) {
-                // Click the first valid tax ID option (skip "undefined")
-                for (const option of options) {
-                  const optionText = await safeOperation(() => option.evaluate(el => el.textContent), "")
-                  if (optionText && optionText !== "undefined" && optionText.trim() !== "") {
-                    await safeOperation(() => option.click(), null)
-                    console.log(`Selected Tax ID option: ${optionText}`)
-                    taxIdSelected = true
-                    break
-                  }
-                }
-                if (taxIdSelected) break
-              }
-            } catch (error) {
-              console.log(`Tax ID option selector ${optionSelector} not found`)
-            }
-          }
-          if (taxIdSelected) break
-        }
-      } catch (error) {
-        console.log(`Tax ID selector ${selector} not found, trying next...`)
-      }
-    }
-
-    if (!taxIdSelected) {
-      console.log("Could not find Tax ID dropdown, continuing to provider selection...")
-    }
-
-    await delay(3000)
+    await delay(2000)
     console.log("Looking for Provider dropdown...")
 
-    const providerSelectors = [
-      "div:contains('Select a Provider') + div", // Look for div after Provider label
-      "[class*='provider'][class*='select']", // Custom select with provider in class name
-      "[class*='Provider'][class*='Select']", // Custom select with Provider in class name
-      "div[class*='dropdown']:nth-of-type(3)", // Third dropdown on page
-      "div[role='combobox']:nth-of-type(3)", // Third combobox role
-      "div:has(> div:contains('Harmony Health'))", // Div containing "Harmony Health" text
-      "div[class*='css-']:last-of-type", // Last custom styled div
-    ]
-
     let providerSelected = false
-    for (const selector of providerSelectors) {
-      try {
-        const providerElement = await safeOperation(
-          () => newBodyFrame.waitForSelector(selector, { timeout: 5000 }),
-          null,
-        )
-        if (providerElement) {
-          await safeOperation(() => newBodyFrame.click(selector), null)
-          console.log(`Found Provider dropdown with selector: ${selector}`)
-          await delay(1000)
 
-          const providerOptionSelectors = [
-            "li[role='option']",
-            "div[role='option']",
-            ".css-1n7v3ny-option", // react-select option class
-            "[class*='option']",
-            "div:contains('Harmony Health')",
-          ]
+    try {
+      // Wait for the provider input field to be present
+      await safeOperation(() => newBodyFrame.waitForSelector("#selectedProvider", { timeout: 10000 }), null)
+      console.log("Found provider input field")
 
-          for (const optionSelector of providerOptionSelectors) {
-            try {
-              const options = await safeOperation(() => newBodyFrame.$$(optionSelector), [])
-              if (options && options.length > 0) {
-                // Look for Harmony Health option first
+      // Click on the provider input field to focus it
+      await safeOperation(() => newBodyFrame.click("#selectedProvider"), null)
+      await delay(500)
+
+      // Click on the dropdown arrow button to open the dropdown
+      const dropdownButton = await safeOperation(() => newBodyFrame.$('button[aria-label="Open"][title="Open"]'), null)
+      if (dropdownButton) {
+        await safeOperation(() => dropdownButton.click(), null)
+        console.log("Clicked dropdown arrow button")
+        await delay(1500)
+      } else {
+        // Try alternative selector for the dropdown button
+        await safeOperation(() => newBodyFrame.click('div[name="selectedProvider"] button[role="button"]'), null)
+        console.log("Clicked alternative dropdown button")
+        await delay(1500)
+      }
+
+      // Wait for dropdown options to appear and select Harmony Health
+      const optionSelectors = [
+        'li[role="option"]',
+        'div[role="option"]',
+        ".MuiAutocomplete-option",
+        ".MuiMenuItem-root",
+        "[data-option-index]",
+      ]
+
+      for (const selector of optionSelectors) {
+        try {
+          console.log(`Looking for options with selector: ${selector}`)
+
+          // Wait for options to appear
+          await safeOperation(() => newBodyFrame.waitForSelector(selector, { visible: true, timeout: 5000 }), null)
+
+          // Get all options and find Harmony Health
+          const selected = await safeOperation(
+            () =>
+              newBodyFrame.evaluate((sel) => {
+                const options = Array.from(document.querySelectorAll(sel))
+                console.log(`Found ${options.length} options`)
+
                 for (const option of options) {
-                  const optionText = await safeOperation(() => option.evaluate(el => el.textContent), "")
-                  if (optionText && optionText.toLowerCase().includes("harmony health")) {
-                    await safeOperation(() => option.click(), null)
-                    console.log(`Selected Provider option: ${optionText}`)
-                    providerSelected = true
-                    break
+                  const text = option.textContent || ""
+                  console.log(`Option text: "${text}"`)
+
+                  if (text.toLowerCase().includes("harmony health")) {
+                    console.log(`Found Harmony Health option: ${text}`)
+                    ;(option as HTMLElement).click()
+                    return true
                   }
                 }
-                // If Harmony Health not found, select first valid option
-                if (!providerSelected && options.length > 0) {
+
+                // If Harmony Health not found, try first non-empty option
+                if (options.length > 0) {
                   const firstOption = options[0]
-                  const optionText = await safeOperation(() => firstOption.evaluate(el => el.textContent), "")
-                  await safeOperation(() => firstOption.click(), null)
-                  console.log(`Selected first available Provider option: ${optionText}`)
-                  providerSelected = true
+                  const firstText = firstOption.textContent || ""
+                  if (firstText.trim() && !firstText.toLowerCase().includes("select")) {
+                    console.log(`Selecting first available option: ${firstText}`)
+                    ;(firstOption as HTMLElement).click()
+                    return true
+                  }
                 }
-                if (providerSelected) break
-              }
-            } catch (error) {
-              console.log(`Provider option selector ${optionSelector} not found`)
-            }
+
+                return false
+              }, selector),
+            false,
+          )
+
+          if (selected) {
+            providerSelected = true
+            console.log(`Successfully selected provider with selector: ${selector}`)
+            break
           }
-          if (providerSelected) break
+        } catch (error) {
+          console.log(`Selector ${selector} failed: ${(error as Error).message}`)
         }
-      } catch (error) {
-        console.log(`Provider selector ${selector} not found, trying next...`)
       }
+
+      // If still not selected, try typing approach
+      if (!providerSelected) {
+        console.log("Trying typing approach for provider selection...")
+
+        // Clear the input and type "Harmony Health"
+        await safeOperation(() => newBodyFrame.click("#selectedProvider"), null)
+        await delay(300)
+
+        // Clear existing value
+        await safeOperation(
+          () =>
+            newBodyFrame.evaluate(() => {
+              const input = document.querySelector("#selectedProvider") as HTMLInputElement
+              if (input) {
+                input.value = ""
+                input.dispatchEvent(new Event("input", { bubbles: true }))
+              }
+            }),
+          null,
+        )
+
+        await delay(300)
+
+        // Type "Harmony Health"
+        await safeOperation(() => newBodyFrame.type("#selectedProvider", "Harmony Health"), null)
+        await delay(1000)
+
+        // Look for autocomplete suggestions
+        const suggestionSelected = await safeOperation(
+          () =>
+            newBodyFrame.evaluate(() => {
+              const suggestions = Array.from(document.querySelectorAll('li[role="option"], .MuiAutocomplete-option'))
+              console.log(`Found ${suggestions.length} autocomplete suggestions`)
+
+              for (const suggestion of suggestions) {
+                const text = suggestion.textContent || ""
+                if (text.toLowerCase().includes("harmony health")) {
+                  console.log(`Clicking autocomplete suggestion: ${text}`)
+                  ;(suggestion as HTMLElement).click()
+                  return true
+                }
+              }
+
+              // If no exact match, press Enter to accept typed value
+              const input = document.querySelector("#selectedProvider") as HTMLInputElement
+              if (input && input.value.toLowerCase().includes("harmony")) {
+                console.log("Pressing Enter to accept typed value")
+                input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }))
+                return true
+              }
+
+              return false
+            }),
+          false,
+        )
+
+        if (suggestionSelected) {
+          providerSelected = true
+          console.log("Successfully selected provider via typing approach")
+        }
+      }
+    } catch (error) {
+      console.log(`Provider selection failed: ${error instanceof Error ? error.message : String(error)}`)
     }
 
     if (!providerSelected) {
-      throw new Error("Failed to select provider from dropdown after multiple attempts")
+      throw new Error(
+        "Failed to select provider from dropdown after multiple attempts. Please check if 'Harmony Health' is available in the provider dropdown.",
+      )
     }
 
     await delay(1000)
 
     const nextButtonSelectors = [
-      "button.btn.btn-primary",
+      "#landing-next", // Specific ID from HTML
       "button[type='submit']",
+      "button.MuiButton-containedPrimary",
+      ".MuiButton-root[type='submit']",
+      "button.btn.btn-primary",
       "input[type='submit']",
-      "button:contains('Next')",
-      "button:contains('Continue')",
       ".btn-primary",
       ".next-button",
       "button[value='Next']",
       "input[value='Next']",
+      "button.btn:last-of-type", // Last button (likely to be Next)
     ]
 
     let nextButtonClicked = false
@@ -10507,7 +10535,6 @@ async function navigateToCareCentral(page: Page): Promise<void> {
     throw error
   }
 }
-
 
 
 async function extractMemberInformation(frame: Frame): Promise<MemberData[]> {
