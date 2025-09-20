@@ -111,131 +111,146 @@
     </div>
 
     <script>
-        // Function to update the status display
-        function updateStatus() {
-            fetch('/health')
-                .then(response => response.json())
-                .then(data => {
-                    const statusIndicator = document.getElementById('statusIndicator');
-                    const botStatus = document.getElementById('botStatus');
-                    const lastChecked = document.getElementById('lastChecked');
-                    const startButton = document.getElementById('startButton');
-                    const sendStatusButton = document.getElementById('sendStatusButton');
-                    
-                    // Update status indicator
-                    if (data.botRunning) {
-                        statusIndicator.className = 'status-indicator status-running';
-                        botStatus.textContent = 'Running';
-                        botStatus.className = 'text-success';
-                        startButton.disabled = true;
-                        startButton.textContent = 'Bot Running';
-                    } else {
-                        statusIndicator.className = 'status-indicator status-stopped';
-                        botStatus.textContent = 'Stopped';
-                        botStatus.className = 'text-danger';
+        // Wait for DOMContentLoaded to ensure all elements are available
+        document.addEventListener('DOMContentLoaded', function() {
+            // Function to update the status display
+            function updateStatus() {
+                fetch('/health')
+                    .then(response => response.json())
+                    .then(data => {
+                        const statusIndicator = document.getElementById('statusIndicator');
+                        const botStatus = document.getElementById('botStatus');
+                        const lastChecked = document.getElementById('lastChecked');
+                        const startButton = document.getElementById('startButton');
+                        const sendStatusButton = document.getElementById('sendStatusButton');
+                        
+                        // Update status indicator
+                        if (data.botRunning) {
+                            statusIndicator.className = 'status-indicator status-running';
+                            botStatus.textContent = 'Running';
+                            botStatus.className = 'text-success';
+                            startButton.disabled = true;
+                            startButton.textContent = 'Bot Running';
+                        } else {
+                            statusIndicator.className = 'status-indicator status-stopped';
+                            botStatus.textContent = 'Stopped';
+                            botStatus.className = 'text-danger';
+                            startButton.disabled = false;
+                            startButton.textContent = 'Start Bot';
+                        }
+                        
+                        // Enable status button regardless
+                        sendStatusButton.disabled = false;
+                        
+                        // Update last checked time
+                        const date = new Date(data.timestamp);
+                        lastChecked.textContent = `Last checked: ${date.toLocaleString()}`;
+                        
+                        // Update other stats if available
+                        if (data.stats) {
+                            document.getElementById('uptime').textContent = data.stats.uptime || 'N/A';
+                            document.getElementById('membersCount').textContent = data.stats.membersCount || 'N/A';
+                            document.getElementById('lastStatusEmail').textContent = data.stats.lastStatusEmail || 'N/A';
+                            document.getElementById('memoryUsage').textContent = data.stats.memoryUsage || 'N/A';
+                            document.getElementById('cpuUsage').textContent = data.stats.cpuUsage || 'N/A';
+                            document.getElementById('dbStatus').textContent = data.stats.dbConnected ? 'Connected' : 'Disconnected';
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error fetching status:', error);
+                        document.getElementById('botStatus').textContent = 'Error checking status';
+                        document.getElementById('botStatus').className = 'text-warning';
+                    });
+            }
+            
+            // Function to fetch and display logs
+            function fetchLogs() {
+                fetch('/logs')
+                    .then(response => response.json())
+                    .then(data => {
+                        const logContainer = document.getElementById('logContainer');
+                        logContainer.innerHTML = '';
+                        
+                        if (data.logs && data.logs.length > 0) {
+                            data.logs.forEach(log => {
+                                const logEntry = document.createElement('div');
+                                logEntry.className = 'log-entry';
+                                
+                                const timestamp = document.createElement('span');
+                                timestamp.className = 'timestamp';
+                                timestamp.textContent = `[${new Date(log.timestamp).toLocaleString()}] `;
+                                
+                                const message = document.createElement('span');
+                                message.textContent = log.message;
+                                
+                                logEntry.appendChild(timestamp);
+                                logEntry.appendChild(message);
+                                logContainer.appendChild(logEntry);
+                            });
+                        } else {
+                            logContainer.innerHTML = '<div class="log-entry">No logs available</div>';
+                        }
+                        
+                        // Scroll to bottom
+                        logContainer.scrollTop = logContainer.scrollHeight;
+                    })
+                    .catch(error => {
+                        console.error('Error fetching logs:', error);
+                        document.getElementById('logContainer').innerHTML = 
+                            '<div class="log-entry text-danger">Error loading logs</div>';
+                    });
+            }
+            
+            // Event listeners
+            document.getElementById('startButton').addEventListener('click', () => {
+                // Disable the button immediately to prevent double clicks
+                const startButton = document.getElementById('startButton');
+                startButton.disabled = true;
+                startButton.textContent = 'Starting...';
+                fetch('/start-bot', { method: 'POST' })
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Network response was not ok');
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        alert(data.message);
+                        updateStatus();
+                        fetchLogs();
+                    })
+                    .catch(error => {
+                        console.error('Error starting bot:', error);
+                        alert('Error starting bot. Check console for details.');
+                        // Re-enable the button in case of error
                         startButton.disabled = false;
                         startButton.textContent = 'Start Bot';
-                    }
-                    
-                    // Enable status button regardless
-                    sendStatusButton.disabled = false;
-                    
-                    // Update last checked time
-                    const date = new Date(data.timestamp);
-                    lastChecked.textContent = `Last checked: ${date.toLocaleString()}`;
-                    
-                    // Update other stats if available
-                    if (data.stats) {
-                        document.getElementById('uptime').textContent = data.stats.uptime || 'N/A';
-                        document.getElementById('membersCount').textContent = data.stats.membersCount || 'N/A';
-                        document.getElementById('lastStatusEmail').textContent = data.stats.lastStatusEmail || 'N/A';
-                        document.getElementById('memoryUsage').textContent = data.stats.memoryUsage || 'N/A';
-                        document.getElementById('cpuUsage').textContent = data.stats.cpuUsage || 'N/A';
-                        document.getElementById('dbStatus').textContent = data.stats.dbConnected ? 'Connected' : 'Disconnected';
-                    }
-                })
-                .catch(error => {
-                    console.error('Error fetching status:', error);
-                    document.getElementById('botStatus').textContent = 'Error checking status';
-                    document.getElementById('botStatus').className = 'text-warning';
-                });
-        }
-        
-        // Function to fetch and display logs
-        function fetchLogs() {
-            fetch('/logs')
-                .then(response => response.json())
-                .then(data => {
-                    const logContainer = document.getElementById('logContainer');
-                    logContainer.innerHTML = '';
-                    
-                    if (data.logs && data.logs.length > 0) {
-                        data.logs.forEach(log => {
-                            const logEntry = document.createElement('div');
-                            logEntry.className = 'log-entry';
-                            
-                            const timestamp = document.createElement('span');
-                            timestamp.className = 'timestamp';
-                            timestamp.textContent = `[${new Date(log.timestamp).toLocaleString()}] `;
-                            
-                            const message = document.createElement('span');
-                            message.textContent = log.message;
-                            
-                            logEntry.appendChild(timestamp);
-                            logEntry.appendChild(message);
-                            logContainer.appendChild(logEntry);
-                        });
-                    } else {
-                        logContainer.innerHTML = '<div class="log-entry">No logs available</div>';
-                    }
-                    
-                    // Scroll to bottom
-                    logContainer.scrollTop = logContainer.scrollHeight;
-                })
-                .catch(error => {
-                    console.error('Error fetching logs:', error);
-                    document.getElementById('logContainer').innerHTML = 
-                        '<div class="log-entry text-danger">Error loading logs</div>';
-                });
-        }
-        
-        // Event listeners
-        document.getElementById('startButton').addEventListener('click', () => {
-            fetch('/start-bot', { method: 'POST' })
-                .then(response => response.json())
-                .then(data => {
-                    alert(data.message);
-                    updateStatus();
-                    fetchLogs();
-                })
-                .catch(error => {
-                    console.error('Error starting bot:', error);
-                    alert('Error starting bot. Check console for details.');
-                });
+                    });
+            });
+            
+            document.getElementById('sendStatusButton').addEventListener('click', () => {
+                fetch('/send-status', { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        alert(data.message);
+                        updateStatus();
+                        fetchLogs();
+                    })
+                    .catch(error => {
+                        console.error('Error sending status:', error);
+                        alert('Error sending status. Check console for details.');
+                    });
+            });
+            
+            document.getElementById('refreshLogsButton').addEventListener('click', fetchLogs);
+            
+            // Initial updates
+            updateStatus();
+            fetchLogs();
+            
+            // Set up periodic updates
+            setInterval(updateStatus, 30000); // Update status every 30 seconds
         });
-        
-        document.getElementById('sendStatusButton').addEventListener('click', () => {
-            fetch('/send-status', { method: 'POST' })
-                .then(response => response.json())
-                .then(data => {
-                    alert(data.message);
-                    updateStatus();
-                    fetchLogs();
-                })
-                .catch(error => {
-                    console.error('Error sending status:', error);
-                    alert('Error sending status. Check console for details.');
-                });
-        });
-        
-        document.getElementById('refreshLogsButton').addEventListener('click', fetchLogs);
-        
-        // Initial updates
-        updateStatus();
-        fetchLogs();
-        
-        // Set up periodic updates
-        setInterval(updateStatus, 30000); // Update status every 30 seconds
     </script>
 </body>
 </html>
