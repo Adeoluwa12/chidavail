@@ -225,6 +225,7 @@ export function scheduleStatusEmails(sendStatusFn: () => Promise<void>): NodeJS.
   const now = new Date()
 
   // Define the scheduled times
+  //we did this to monitior the activity of the bot
   const scheduledTimes = [
     { hour: 6, minute: 0, name: "morning" }, // 6:00 AM
     { hour: 12, minute: 0, name: "afternoon" }, // 12:00 PM
